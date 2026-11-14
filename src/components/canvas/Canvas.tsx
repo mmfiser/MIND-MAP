@@ -19,10 +19,12 @@ import type { MapNode, Position } from '../../model/types';
 import { isMobileNow } from '../../hooks/useIsMobile';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
+import { FloatingEdge, type FloatingEdgeType } from './FloatingEdge';
 import { MapNodeView, type FlowNode } from './MapNodeView';
 import { ZoomControls } from './ZoomControls';
 
 const nodeTypes = { mm: MapNodeView };
+const edgeTypes = { floating: FloatingEdge };
 const SNAP: [number, number] = [GRID, GRID];
 const LONG_PRESS_MS = 550;
 
@@ -101,10 +103,10 @@ export function Canvas() {
     });
   }, [doc, index, selectedId]);
 
-  const edges = useMemo<Edge[]>(() => {
+  const edges = useMemo<FloatingEdgeType[]>(() => {
     if (!doc || !index) return [];
     const colorOf = new Map<string, string>();
-    const out: Edge[] = [];
+    const out: FloatingEdgeType[] = [];
     for (const list of index.children.values()) {
       for (const e of list) {
         let color = colorOf.get(e.source);
@@ -117,8 +119,11 @@ export function Canvas() {
           id: e.id,
           source: e.source,
           target: e.target,
+          type: 'floating',
+          // Skryté handly zůstávají kvůli React Flow; místo uchycení počítá FloatingEdge.
           sourceHandle: 'r',
           targetHandle: 'l',
+          data: { kind: e.kind },
           selectable: false,
           focusable: false,
           style: { stroke: color, strokeWidth: 2.25 },
@@ -281,6 +286,7 @@ export function Canvas() {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onNodeDragStart={cancelPress}
         onNodeDragStop={onNodeDragStop}
