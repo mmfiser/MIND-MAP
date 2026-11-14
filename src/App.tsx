@@ -1,8 +1,9 @@
 import { ReactFlowProvider } from '@xyflow/react';
-import { FolderPlus } from 'lucide-react';
+import { FolderPlus, RefreshCw } from 'lucide-react';
 import { useEffect } from 'react';
 import { createProject } from './app/actions';
 import { boot } from './app/session';
+import { reloadToUpdate } from './app/updates';
 import { Canvas } from './components/canvas/Canvas';
 import { NodeContextMenu } from './components/canvas/NodeContextMenu';
 import { DetailPanel } from './components/detail/DetailPanel';
@@ -27,6 +28,19 @@ function EmptyHint() {
           <FolderPlus size={18} /> Nový projekt
         </button>
       </div>
+    </div>
+  );
+}
+
+function UpdateBanner() {
+  const ready = useUiStore((s) => s.updateReady);
+  if (!ready) return null;
+  return (
+    <div className="update-banner" role="status">
+      <span>Je k dispozici nová verze aplikace.</span>
+      <button className="btn small primary" onClick={() => void reloadToUpdate()}>
+        <RefreshCw size={15} /> Obnovit
+      </button>
     </div>
   );
 }
@@ -67,6 +81,7 @@ export function App() {
     <>
       {phase === 'ready' ? <Workspace /> : <Gate />}
       <Dialogs />
+      <UpdateBanner />
       <Toasts />
       <Busy />
     </>

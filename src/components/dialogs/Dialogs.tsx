@@ -276,6 +276,10 @@ function SettingsDialog() {
         </div>
       </div>
       <div className="field">
+        <span>Verze aplikace</span>
+        <div>{__APP_VERSION__}</div>
+      </div>
+      <div className="field">
         <span>Lokální data</span>
         <button
           className="btn small danger"

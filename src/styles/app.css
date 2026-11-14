@@ -1033,6 +1033,26 @@ select {
   align-self: center;
 }
 
+/* ===== Nová verze ===== */
+.update-banner {
+  position: fixed;
+  top: calc(var(--topbar-h) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow-lg);
+  font-weight: 500;
+  animation: pop 0.16s ease-out;
+}
+
 /* ===== Toasty a busy ===== */
 .toasts {
   position: fixed;

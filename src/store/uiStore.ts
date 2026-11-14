@@ -74,6 +74,8 @@ interface UiState {
   fitRequest: number;
   /** Požadavek na označení pole názvu v detailu (po vytvoření uzlu). */
   editTitleRequest: number;
+  /** Nová verze aplikace je připravená – stačí obnovit stránku. */
+  updateReady: boolean;
 
   set(patch: Partial<UiState>): void;
   select(id: string | null, openDetail?: boolean): void;
@@ -115,6 +117,7 @@ export const useUiStore = create<UiState>()((set) => ({
   focusRequest: null,
   fitRequest: 0,
   editTitleRequest: 0,
+  updateReady: false,
 
   set(patch) {
     set(patch);
