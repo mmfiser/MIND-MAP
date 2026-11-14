@@ -1,5 +1,6 @@
 /** Stav rozhraní – mimo historii Zpět/Znovu. */
 import { create } from 'zustand';
+import { todayYmd } from '../model/dates';
 
 export type Phase = 'loading' | 'setup' | 'locked' | 'ready';
 export type Theme = 'light' | 'dark';
@@ -76,6 +77,12 @@ interface UiState {
   editTitleRequest: number;
   /** Nová verze aplikace je připravená – stačí obnovit stránku. */
   updateReady: boolean;
+  /** Dnešní datum YYYY-MM-DD (místní čas) – přepočítává se o půlnoci. */
+  today: string;
+  /** Otevřený panel Koš. */
+  trashOpen: boolean;
+  /** Druhá úroveň kontextové nabídky (Stav… / Priorita…). */
+  subMenu: { x: number; y: number; nodeId: string; kind: 'status' | 'priority' } | null;
 
   set(patch: Partial<UiState>): void;
   select(id: string | null, openDetail?: boolean): void;
@@ -118,6 +125,9 @@ export const useUiStore = create<UiState>()((set) => ({
   fitRequest: 0,
   editTitleRequest: 0,
   updateReady: false,
+  today: todayYmd(),
+  trashOpen: false,
+  subMenu: null,
 
   set(patch) {
     set(patch);

@@ -13,14 +13,17 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { GRID, canvasApi, commitPositions, createProject } from '../../app/actions';
 import { getSettings, updateSettings } from '../../app/session';
-import { buildHierarchyIndex, owningProject } from '../../model/graph';
+import { formatShort } from '../../model/dates';
+import { deadlineState } from '../../model/deadline';
+import { buildHierarchyIndex, owningProject, type HierarchyIndex } from '../../model/graph';
+import { checklistProgress, projectProgress, subtaskProgress } from '../../model/progress';
 import { colorHex, contrastText } from '../../model/labels';
-import type { MapNode, Position } from '../../model/types';
+import type { DocData, MapNode, Position } from '../../model/types';
 import { isMobileNow } from '../../hooks/useIsMobile';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import { FloatingEdge, type FloatingEdgeType } from './FloatingEdge';
-import { MapNodeView, type FlowNode } from './MapNodeView';
+import { MapNodeView, type FlowNode, type FlowNodeData } from './MapNodeView';
 import { ZoomControls } from './ZoomControls';
 
 const nodeTypes = { mm: MapNodeView };
@@ -30,32 +33,44 @@ const LONG_PRESS_MS = 550;
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const MAX_TAGS_ON_NODE = 2;
+
 interface CacheEntry {
-  src: MapNode;
-  shared: boolean;
+  /** Podpis dat uzlu – při shodě (a stejné pozici/výběru) se uzel nepřekresluje. */
+  sig: string;
   selected: boolean;
   node: FlowNode;
 }
 
-function toFlowNode(n: MapNode, shared: boolean, selected: boolean, prev?: FlowNode): FlowNode {
+/** Odvozená data uzlu pro zobrazení (procenta, termíny, počty…). */
+function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string): FlowNodeData {
   const fill = n.type === 'project' ? colorHex(n.color) : undefined;
-  return {
-    id: n.id,
-    type: 'mm',
-    position: n.position,
-    selected,
-    draggable: !n.positionLocked,
-    data: {
-      title: n.title,
-      kind: n.type,
-      fill,
-      textColor: fill ? contrastText(fill) : undefined,
-      shared,
-      borderColor: n.borderColor,
-      hasNotes: n.notes.trim().length > 0,
-    },
-    ...(prev?.measured ? { measured: prev.measured } : {}),
+  const data: FlowNodeData = {
+    title: n.title,
+    kind: n.type,
+    fill,
+    textColor: fill ? contrastText(fill) : undefined,
+    shared: (index.parents.get(n.id)?.length ?? 0) > 1,
+    borderColor: n.borderColor,
+    hasNotes: n.notes.trim().length > 0,
+    status: n.status,
+    priority: n.priority,
+    icon: n.icon,
+    dueState: deadlineState(n.dueDate, today, n.status),
+    tags: n.tags.slice(0, MAX_TAGS_ON_NODE),
+    moreTags: Math.max(0, n.tags.length - MAX_TAGS_ON_NODE),
   };
+  if (n.dueDate) data.due = formatShort(n.dueDate, today);
+  if (n.type === 'project') {
+    const p = projectProgress(d, n.id, index);
+    data.progress = { percent: p.percent, open: p.open, done: p.done };
+  } else {
+    const sp = subtaskProgress(d, n.id, index);
+    if (sp) data.subtasks = { done: sp.done, total: sp.total };
+  }
+  const cl = checklistProgress(n);
+  if (cl) data.checklist = cl;
+  return data;
 }
 
 export function Canvas() {
@@ -65,6 +80,7 @@ export function Canvas() {
   const theme = useUiStore((s) => s.theme);
   const focusRequest = useUiStore((s) => s.focusRequest);
   const fitRequest = useUiStore((s) => s.fitRequest);
+  const today = useUiStore((s) => s.today);
   const rf = useReactFlow<FlowNode, Edge>();
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -73,7 +89,8 @@ export function Canvas() {
 
   const index = useMemo(() => (doc ? buildHierarchyIndex(doc) : null), [doc?.nodes, doc?.edges]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Synchronizace dokument → uzly React Flow (nezměněné uzly si drží identitu).
+  // Synchronizace dokument → uzly React Flow. Uzel si drží identitu, dokud se
+  // nezmění jeho zobrazená data, výběr nebo pozice (memo komponenty pak nepřekresluje).
   useEffect(() => {
     if (!doc || !index) {
       setNodes([]);
@@ -85,23 +102,32 @@ export function Canvas() {
       const out: FlowNode[] = [];
       for (const n of Object.values(doc.nodes)) {
         if (n.deletedAt) continue;
-        const shared = (index.parents.get(n.id)?.length ?? 0) > 1;
+        const data = buildData(n, doc, index, today);
+        const sig = JSON.stringify(data);
         const selected = n.id === selectedId;
         const c = cache.current.get(n.id);
         const prev = prevById.get(n.id);
         let node: FlowNode;
-        if (c && prev && c.src === n && c.shared === shared && c.selected === selected && prev.position === n.position) {
+        if (c && prev && c.sig === sig && c.selected === selected && prev.position === n.position) {
           node = prev;
         } else {
-          node = toFlowNode(n, shared, selected, prev);
+          node = {
+            id: n.id,
+            type: 'mm',
+            position: n.position,
+            selected,
+            draggable: !n.positionLocked,
+            data: c && c.sig === sig ? c.node.data : data,
+            ...(prev?.measured ? { measured: prev.measured } : {}),
+          };
         }
-        nextCache.set(n.id, { src: n, shared, selected, node });
+        nextCache.set(n.id, { sig, selected, node });
         out.push(node);
       }
       cache.current = nextCache;
       return out;
     });
-  }, [doc, index, selectedId]);
+  }, [doc, index, selectedId, today]);
 
   const edges = useMemo<FloatingEdgeType[]>(() => {
     if (!doc || !index) return [];

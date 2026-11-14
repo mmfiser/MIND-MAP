@@ -5,15 +5,20 @@
 import { DEFAULT_PROJECT_COLOR, PROJECT_PALETTE } from '../model/labels';
 import { createNode } from '../model/factory';
 import { buildHierarchyIndex, childEdges, parentEdges } from '../model/graph';
+import { formatShort, formatWithWeekday, isValidYmd } from '../model/dates';
 import * as H from '../model/hierarchy';
-import type { DocData, MapNode, NodeType, OpResult, Position } from '../model/types';
+import { nonWorkingReason, toLastWorkingDayOnOrBefore } from '../model/holidays';
+import { normalizeTag } from '../model/tags';
+import * as T from '../model/trash';
+import type { ChecklistItem, DocData, MapNode, NodeType, OpResult, Position, Priority, Status } from '../model/types';
+import { newId } from '../model/factory';
 import { useDocStore, type ApplyOptions } from '../store/docStore';
-import { confirmDialog, toast, useUiStore } from '../store/uiStore';
+import { choose, confirmDialog, toast, useUiStore } from '../store/uiStore';
 
 export const GRID = 10;
 export const NODE_SIZE: Record<NodeType, { w: number; h: number }> = {
-  project: { w: 240, h: 76 },
-  task: { w: 180, h: 44 },
+  project: { w: 260, h: 110 },
+  task: { w: 190, h: 64 },
   milestone: { w: 160, h: 44 },
 };
 
@@ -145,11 +150,16 @@ export async function deleteWithConfirm(nodeId: string | null): Promise<void> {
   const name = n.title.trim() || 'bez názvu';
   const msg =
     others > 0
-      ? `Smaže se „${name}“ a ${others} ${others === 1 ? 'podřízený uzel' : others < 5 ? 'podřízené uzly' : 'podřízených uzlů'}. Sdílené uzly, které mají rodiče i jinde, zůstanou.`
-      : `Smaže se „${name}“.`;
-  const ok = await confirmDialog('Smazat?', `${msg} Akci lze vrátit tlačítkem Zpět.`, 'Smazat', true);
+      ? `Do koše se přesune „${name}“ a ${others} ${others === 1 ? 'podřízený uzel' : others < 5 ? 'podřízené uzly' : 'podřízených uzlů'}. Sdílené uzly, které mají rodiče i jinde, zůstanou.`
+      : `Do koše se přesune „${name}“.`;
+  const ok = await confirmDialog(
+    'Přesunout do koše?',
+    `${msg} Položky půjde obnovit z Koše nebo tlačítkem Zpět.`,
+    'Přesunout do koše',
+    true,
+  );
   if (!ok) return;
-  if (run((x) => H.deleteBranch(x, nodeId))) {
+  if (run((x) => T.trashBranch(x, nodeId))) {
     const ui = useUiStore.getState();
     if (ui.selectedId && branch.has(ui.selectedId)) ui.select(null);
   }
@@ -247,4 +257,167 @@ export function parentCandidates(
         disabledReason = 'vznikl by cyklus';
       return { node, disabledReason };
     });
+}
+
+// ---------- Fáze 2: stav, priorita, data, ikona, štítky, checklist, koš ----------
+
+export function setStatusOf(id: string, status: Status): void {
+  run((x) => H.setStatus(x, id, status));
+}
+
+/** Zaškrtnutí na mapě / tlačítka Hotovo – Znovu otevřít (vrací stav Probíhá). */
+export function toggleDone(id: string): void {
+  const n = data()?.nodes[id];
+  if (!n) return;
+  setStatusOf(id, n.status === 'done' ? 'in_progress' : 'done');
+}
+
+export function setPriorityOf(id: string, priority: Priority): void {
+  const n = data()?.nodes[id];
+  if (!n || n.priority === priority) return;
+  run((x) => H.updateNode(x, id, { priority }));
+}
+
+/**
+ * Nastaví datum. Termín dokončení / deadline na nepracovní den se posune
+ * na poslední pracovní den před ním a uživatel dostane oznámení.
+ */
+export function setDateOf(id: string, field: 'startDate' | 'dueDate', value: string | null): void {
+  const n = data()?.nodes[id];
+  if (!n) return;
+  let v: string | undefined = value && isValidYmd(value) ? value : undefined;
+  if (v && field === 'dueDate') {
+    const shifted = toLastWorkingDayOnOrBefore(v);
+    if (shifted !== v) {
+      const today = useUiStore.getState().today;
+      toast(
+        `Termín ${formatShort(v, today)} připadá na ${nonWorkingReason(v)}, posunut na ${formatWithWeekday(shifted, today)}`,
+        'info',
+      );
+      v = shifted;
+    }
+  }
+  if (n[field] === v) return;
+  run((x) => {
+    const r = H.updateNode(x, id, {});
+    if (!r.ok) return r;
+    const node = { ...r.data.nodes[id]! };
+    if (v) node[field] = v;
+    else delete node[field];
+    return { ok: true, data: { nodes: { ...r.data.nodes, [id]: node }, edges: r.data.edges } };
+  });
+}
+
+export function setIconOf(id: string, icon: string | null): void {
+  run((x) => {
+    const r = H.updateNode(x, id, {});
+    if (!r.ok) return r;
+    const node = { ...r.data.nodes[id]! };
+    if (icon) node.icon = icon;
+    else delete node.icon;
+    return { ok: true, data: { nodes: { ...r.data.nodes, [id]: node }, edges: r.data.edges } };
+  });
+}
+
+export function addTagTo(id: string, raw: string): void {
+  const tag = normalizeTag(raw);
+  const n = data()?.nodes[id];
+  if (!tag || !n) return;
+  if (n.tags.some((t) => t.toLocaleLowerCase('cs') === tag.toLocaleLowerCase('cs'))) return;
+  run((x) => H.updateNode(x, id, { tags: [...n.tags, tag] }));
+}
+
+export function removeTagFrom(id: string, tag: string): void {
+  const n = data()?.nodes[id];
+  if (!n) return;
+  run((x) => H.updateNode(x, id, { tags: n.tags.filter((t) => t !== tag) }));
+}
+
+function setChecklist(id: string, fn: (list: ChecklistItem[]) => ChecklistItem[], coalesceKey?: string): void {
+  const n = data()?.nodes[id];
+  if (!n) return;
+  run((x) => H.updateNode(x, id, { checklist: fn(n.checklist) }), coalesceKey ? { coalesceKey } : undefined);
+}
+
+/** Přidá položku (za index `after`, jinak na konec) a vrátí její id. */
+export function addChecklistItem(id: string, text = '', after?: number): string {
+  const item: ChecklistItem = { id: newId(), text, done: false };
+  setChecklist(id, (list) => {
+    const at = after === undefined ? list.length : after + 1;
+    return [...list.slice(0, at), item, ...list.slice(at)];
+  });
+  return item.id;
+}
+
+export function updateChecklistText(id: string, itemId: string, text: string): void {
+  setChecklist(id, (list) => list.map((c) => (c.id === itemId ? { ...c, text } : c)), `check:${itemId}`);
+}
+
+export function toggleChecklistItem(id: string, itemId: string): void {
+  setChecklist(id, (list) => list.map((c) => (c.id === itemId ? { ...c, done: !c.done } : c)));
+}
+
+export function removeChecklistItem(id: string, itemId: string): void {
+  setChecklist(id, (list) => list.filter((c) => c.id !== itemId));
+}
+
+export function moveChecklistItem(id: string, from: number, to: number): void {
+  if (from === to) return;
+  setChecklist(id, (list) => {
+    const next = [...list];
+    const [it] = next.splice(from, 1);
+    if (!it) return list;
+    next.splice(Math.max(0, Math.min(to, next.length)), 0, it);
+    return next;
+  });
+}
+
+export async function restoreFromTrash(batchId: string): Promise<void> {
+  let result: T.RestoreResult | null = null;
+  const ok = run((x) => {
+    const r = T.restoreBatch(x, batchId);
+    if ('error' in r) return { ok: false, reason: r.error };
+    result = r;
+    return { ok: true, data: r.data };
+  });
+  const res = result as T.RestoreResult | null;
+  if (!ok || !res) return;
+  if (res.notices.length) {
+    await choose({
+      title: 'Obnoveno s upozorněním',
+      message: res.notices.join(' '),
+      options: [{ value: 'ok', label: 'Rozumím', variant: 'primary' }],
+    });
+  } else {
+    toast('Obnoveno.', 'success');
+  }
+  if (res.rootId) {
+    const ui = useUiStore.getState();
+    ui.select(res.rootId, true);
+    ui.focusNode(res.rootId);
+  }
+}
+
+export async function purgeFromTrash(batchId: string, title: string): Promise<void> {
+  const ok = await confirmDialog(
+    'Smazat trvale?',
+    `„${title.trim() || 'bez názvu'}“ se smaže trvale i se všemi vazbami. Z koše už nepůjde obnovit (jen tlačítkem Zpět v tomto sezení).`,
+    'Smazat trvale',
+    true,
+  );
+  if (ok && run((x) => T.purgeBatch(x, batchId))) toast('Trvale smazáno.', 'success');
+}
+
+export async function emptyTrashWithConfirm(): Promise<void> {
+  const d = data();
+  if (!d) return;
+  const n = T.listTrash(d).length;
+  if (!n) return;
+  const ok = await confirmDialog(
+    'Vysypat koš?',
+    `Trvale se smaže ${n} ${n === 1 ? 'položka' : n < 5 ? 'položky' : 'položek'} i se všemi vazbami.`,
+    'Vysypat koš',
+    true,
+  );
+  if (ok && run((x) => T.emptyTrash(x))) toast('Koš je prázdný.', 'success');
 }

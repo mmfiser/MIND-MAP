@@ -59,3 +59,67 @@ describe('migrace schématu', () => {
     expect(Object.keys(doc.edges)).toEqual(['e1']);
   });
 });
+
+describe('migrace reálného dokumentu verze 1 (fáze 1) na verzi 2', () => {
+  // Struktura přesně tak, jak ji ukládala fáze 1 (uvnitř šifrovaného souboru).
+  const v1 = {
+    meta: {
+      schemaVersion: 1,
+      docId: '7b0c2f4e-1d9a-4c55-9a1e-0c3f6f1e2a10',
+      revision: 4,
+      updatedAt: '2026-11-12T17:20:41.512Z',
+      deviceName: 'Notebook',
+    },
+    nodes: {
+      pA: {
+        id: 'pA', type: 'project', title: 'Projekt A', notes: '', color: 'red',
+        status: 'new', priority: 'medium', createdAt: '2026-11-12T17:19:02.001Z',
+        updatedAt: '2026-11-12T17:19:05.300Z', tags: [], checklist: [],
+        position: { x: 240, y: 300 }, collapsed: false,
+      },
+      pB: {
+        id: 'pB', type: 'project', title: 'Projekt B', notes: 'pozn.', color: 'crimson',
+        status: 'new', priority: 'medium', createdAt: '2026-11-12T17:19:40.000Z',
+        updatedAt: '2026-11-12T17:19:41.000Z', tags: [], checklist: [],
+        position: { x: 600, y: 420 }, collapsed: false,
+        dueDate: '2026-11-15', // neděle – musí se posunout na pátek
+      },
+      hw: {
+        id: 'hw', type: 'task', title: 'Hardware', notes: '', status: 'new', priority: 'medium',
+        createdAt: '2026-11-12T17:19:10.000Z', updatedAt: '2026-11-12T17:19:12.000Z',
+        tags: [], checklist: [], position: { x: 560, y: 310 }, collapsed: false,
+        startDate: 'nesmysl',
+      },
+      sklad: {
+        id: 'sklad', type: 'task', title: 'Sklad', notes: '', status: 'new', priority: 'medium',
+        createdAt: '2026-11-12T17:19:20.000Z', updatedAt: '2026-11-12T17:19:22.000Z',
+        tags: [], checklist: [], position: { x: 830, y: 300 }, collapsed: false,
+      },
+    },
+    edges: {
+      e1: { id: 'e1', kind: 'hierarchy', source: 'pA', target: 'hw', order: 0, createdAt: '2026-11-12T17:19:10.001Z' },
+      e2: { id: 'e2', kind: 'hierarchy', source: 'hw', target: 'sklad', order: 0, createdAt: '2026-11-12T17:19:20.001Z' },
+      e3: { id: 'e3', kind: 'hierarchy', source: 'pB', target: 'sklad', order: 0, createdAt: '2026-11-12T17:21:00.000Z' },
+    },
+  };
+
+  it('převede dokument beze ztráty dat a opraví neplatná data', () => {
+    const doc = migrateDocument(JSON.parse(JSON.stringify(v1)));
+    expect(doc.meta).toMatchObject({ schemaVersion: SCHEMA_VERSION, docId: v1.meta.docId, revision: 4, deviceName: 'Notebook' });
+    expect(Object.keys(doc.nodes).sort()).toEqual(['hw', 'pA', 'pB', 'sklad']);
+    expect(Object.keys(doc.edges).sort()).toEqual(['e1', 'e2', 'e3']);
+    expect(doc.nodes.pA).toMatchObject({ title: 'Projekt A', color: 'red', position: { x: 240, y: 300 }, status: 'new' });
+    expect(doc.nodes.pB!.notes).toBe('pozn.');
+    expect(doc.nodes.pB!.dueDate).toBe('2026-11-13'); // neděle → pátek
+    expect(doc.nodes.hw!.startDate).toBeUndefined(); // neplatné datum zahozeno
+    expect(doc.nodes.sklad!.deletedAt).toBeUndefined();
+    expect(doc.nodes.sklad!.trash).toBeUndefined();
+  });
+
+  it('uzel smazaný bez informace o koši dostane vlastní položku koše', () => {
+    const raw = JSON.parse(JSON.stringify(v1));
+    raw.nodes.hw.deletedAt = '2026-11-12T18:00:00.000Z';
+    const doc = migrateDocument(raw);
+    expect(doc.nodes.hw!.trash).toEqual({ batchId: 'hw', isRoot: true });
+  });
+});

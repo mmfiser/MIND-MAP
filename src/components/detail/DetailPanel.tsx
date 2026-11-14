@@ -1,4 +1,4 @@
-import { CornerDownRight, GitFork, ListPlus, MoveRight, StickyNote, Trash2, Unlink, X } from 'lucide-react';
+import { CircleCheck, CornerDownRight, GitFork, ListPlus, MoveRight, RotateCcw, StickyNote, Trash2, Unlink, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   addChildTo,
@@ -6,8 +6,10 @@ import {
   deleteWithConfirm,
   detachFrom,
   setNodeType,
+  toggleDone,
   updateNodeFields,
 } from '../../app/actions';
+import { ChecklistEditor, DateField, IconPicker, PrioritySelect, StatusSelect, TagInput } from './Fields';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { parentEdges } from '../../model/graph';
 import { NODE_TYPE_LABELS, PROJECT_PALETTE, colorHex } from '../../model/labels';
@@ -126,6 +128,25 @@ function DetailContent({ node }: { node: MapNode }) {
       )}
 
       <div className="field">
+        <span>Stav</span>
+        <StatusSelect node={node} />
+      </div>
+
+      <div className="field">
+        <span>Priorita</span>
+        <PrioritySelect node={node} />
+      </div>
+
+      <div className="date-grid">
+        <DateField node={node} field="startDate" label={node.type === 'project' ? 'Zahájení' : 'Začátek'} />
+        <DateField node={node} field="dueDate" label={node.type === 'project' ? 'Deadline' : 'Termín dokončení'} />
+      </div>
+      <div className="meta-row">
+        <span>Vytvořeno</span>
+        <span>{dateFmt.format(new Date(node.createdAt))}</span>
+      </div>
+
+      <div className="field">
         <span>{parents.length > 1 ? `Nadřazené uzly (${parents.length}) – sdílený uzel` : 'Nadřazený uzel'}</span>
         <div className="parent-list">
           {parents.length === 0 && <div className="muted">Žádný – uzel je volně na ploše.</div>}
@@ -163,6 +184,12 @@ function DetailContent({ node }: { node: MapNode }) {
         </div>
       </div>
 
+      {node.type === 'project' && <IconPicker node={node} />}
+
+      <TagInput node={node} />
+
+      <ChecklistEditor node={node} />
+
       {!mobile && (
         <label className="field">
           <span>Poznámky</span>
@@ -178,9 +205,16 @@ function DetailContent({ node }: { node: MapNode }) {
         </label>
       )}
 
-      <div className="meta-row">
-        <span>Vytvořeno</span>
-        <span>{dateFmt.format(new Date(node.createdAt))}</span>
+      <div className="done-row">
+        {node.status === 'done' ? (
+          <button className="btn" onClick={() => toggleDone(node.id)}>
+            <RotateCcw size={17} /> Znovu otevřít
+          </button>
+        ) : (
+          <button className="btn primary" onClick={() => toggleDone(node.id)}>
+            <CircleCheck size={17} /> Hotovo
+          </button>
+        )}
       </div>
     </div>
   );

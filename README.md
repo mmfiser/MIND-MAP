@@ -2,7 +2,59 @@
 
 Myšlenková mapa a správa projektů a úkolů pro jednoho uživatele. Jde o statickou webovou aplikaci bez serveru a bez databáze: data zůstávají v zařízení, vždy zašifrovaná. Mezi zařízeními se přenášejí šifrovaným souborem (např. přes OneDrive).
 
-Aktuální stav: **fáze 1** (plocha, uzly, hierarchie včetně sdílených uzlů, rejstřík, detail, Zpět/Znovu, šifrované ukládání, offline).
+Aktuální stav: **fáze 2**.
+- **Fáze 1:** plocha, uzly, hierarchie včetně sdílených uzlů, rejstřík, detail, Zpět/Znovu, šifrované ukládání, offline.
+- **Fáze 2:** stavy a priority, datumy se zvýrazněním termínů, procenta projektů, checklist, štítky, ikony projektů, koš.
+
+## Projektová logika (fáze 2)
+
+### Stavy a priority
+- **Stavy:** Nový, Probíhá, Čeká, Blokováno, Hotovo, Zrušeno. **Priority:** Nízká, Střední, Vysoká, Kritická.
+- Nastavují se v detailu nebo v kontextové nabídce (Stav…, Priorita…).
+- **Zaškrtávací políčko** na úkolu označí úkol jako Hotovo. Zrušení zaškrtnutí úkol znovu otevře (stav Probíhá).
+- **Hotové a zrušené** uzly jsou šedé a přeškrtnuté; Zrušeno má jinou ikonu než Hotovo.
+- **Úkol s podúkoly** ukazuje počet hotových přímých podúkolů (zrušené se nepočítají). Stav úkolu se tím nemění, nastavuje se vždy ručně.
+
+### Datumy a termíny
+- **Projekt:** zahájení a deadline. **Úkol:** začátek a termín dokončení.
+- Ukládají se jako lokální datum `YYYY-MM-DD` bez času a časové zóny.
+- **Termín na nepracovní den** (sobota, neděle, státní svátek) se automaticky posune na poslední pracovní den před ním a aplikace to oznámí. Totéž se stane při načtení starších dat. Datum zahájení a začátku se neposouvá.
+
+| Kdy | Zvýraznění termínu na uzlu |
+| --- | --- |
+| do termínu zbývají 1–3 pracovní dny | oranžové podbarvení |
+| dnes je den termínu | červené podbarvení + jemné pulzování (při omezení animací jen červené) |
+| termín uplynul | červené podbarvení |
+| uzel je Hotovo nebo Zrušeno | bez zvýraznění |
+
+- **„Zbývající pracovní dny“** jsou pracovní dny v intervalu (dnes, termín], tedy bez dneška a včetně dne termínu. Pracovní den není sobota, neděle ani svátek.
+- **Svátky ČR** se počítají offline pro libovolný rok:
+  - pevné: 1. 1., 1. 5., 8. 5., 5. 7., 6. 7., 28. 9., 28. 10., 17. 11., 24.–26. 12.;
+  - pohyblivé: Velký pátek a Velikonoční pondělí (Velikonoce se počítají algoritmem).
+- **Přechod přes půlnoc:** zvýraznění se přepočítá samo, i když je aplikace otevřená přes noc nebo se vrátí z pozadí.
+
+### Procento dokončení projektu
+- Počítají se jen **úkoly přímo pod projektem**, podúkoly ne.
+- Procento = hotové / všechny; **zrušené úkoly a milníky se nezapočítávají**.
+- **Sdílený úkol** se započítá do každého projektu, pod kterým je přímo.
+- Projekt bez započítatelných úkolů ukazuje „–“.
+
+### Checklist, štítky, ikony
+- **Checklist** v detailu: Enter přidá další položku, Backspace v prázdné položce ji smaže, pořadí se mění tažením za úchyt (myš i prst). Na uzlu se ukazuje „2/5“. Checklist neovlivňuje stav ani procenta.
+- **Štítky:** našeptávání z již použitých štítků, přidání Enterem, odebrání křížkem. Na uzlu se zobrazí 2 štítky a zbytek jako „+N“.
+- **Ikony projektů:** 41 ikon ve skupinách IT, Železnice, IZS a Management. Ikona se zobrazí na projektu i v rejstříku.
+
+### Koš
+- Smazání přesune uzel i s větví do koše. Vazby zůstanou v dokumentu jako neaktivní, takže obnovení vrátí rodiče, pořadí mezi sourozenci i pozici.
+- **Sdílený uzel** s rodičem mimo mazanou větev zůstane na ploše; vazba do větve se vrátí po jejím obnovení.
+- **Obnovení s komplikací:**
+  - Když byl původní rodič mezitím trvale smazán, obnovený uzel zůstane volně na ploše a aplikace to oznámí.
+  - Když by obnovená vazba vytvořila cyklus, zahodí se a aplikace oznámí, který uzel ztratil kterého rodiče.
+- **Trvalé smazání** a **Vysypat koš** odstraní uzly i všechny jejich vazby, takže v souboru nezůstanou osiřelé vazby.
+- Smazání i obnovení jde vrátit tlačítky Zpět/Znovu.
+
+### Verze dat
+Schéma dokumentu je ve verzi **2**. Soubory a lokální data z fáze 1 (verze 1) se při načtení převedou automaticky.
 
 ## Spuštění
 

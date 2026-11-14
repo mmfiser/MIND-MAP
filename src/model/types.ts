@@ -3,7 +3,7 @@
  * Ve fázi 1 UI používá jen část polí, ostatní mají výchozí hodnoty.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type NodeType = 'project' | 'task' | 'milestone';
 export type Status = 'new' | 'in_progress' | 'waiting' | 'blocked' | 'done' | 'cancelled';
@@ -19,6 +19,18 @@ export interface ChecklistItem {
   id: string;
   text: string;
   done: boolean;
+}
+
+/** Informace o smazání do koše (schéma 2). */
+export interface TrashInfo {
+  /** Jedno smazání = jedna položka v koši (celá větev). */
+  batchId: string;
+  /** Kořen smazané větve. */
+  isRoot: boolean;
+  /** Jen u kořene: rodiče v okamžiku smazání. */
+  parentIds?: string[];
+  /** Jen u kořene: název původního projektu (pro panel Koš). */
+  projectTitle?: string;
 }
 
 export interface MapNode {
@@ -49,8 +61,10 @@ export interface MapNode {
   collapsed: boolean;
   /** Zamčená pozice (fáze 5). */
   positionLocked?: boolean;
-  /** Koš (fáze 2) – ISO 8601, pokud je uzel v koši. */
+  /** Koš – ISO 8601, pokud je uzel v koši. */
   deletedAt?: string;
+  /** Koš – ke které položce koše uzel patří. */
+  trash?: TrashInfo;
 }
 
 export interface MapEdge {

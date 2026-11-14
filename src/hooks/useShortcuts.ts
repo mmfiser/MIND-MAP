@@ -18,7 +18,7 @@ export function useShortcuts(): void {
     const onKey = (e: KeyboardEvent) => {
       const ui = useUiStore.getState();
       if (ui.phase !== 'ready') return;
-      const modalOpen = !!(ui.choice || ui.password || ui.picker || ui.notesFor || ui.settingsOpen);
+      const modalOpen = !!(ui.choice || ui.password || ui.picker || ui.notesFor || ui.settingsOpen || ui.trashOpen || ui.subMenu);
       const ctrl = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
 

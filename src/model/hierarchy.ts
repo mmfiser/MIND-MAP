@@ -37,6 +37,8 @@ export function wouldCreateCycle(
   const out = new Map<string, string[]>();
   for (const e of Object.values(data.edges)) {
     if (e.kind !== kind || e.id === ignoreEdgeId) continue;
+    // Vazby uzlů v koši jsou neaktivní.
+    if (!exists(data, e.source) || !exists(data, e.target)) continue;
     let l = out.get(e.source);
     if (!l) out.set(e.source, (l = []));
     l.push(e.target);
@@ -185,7 +187,7 @@ export function branchNodesToDelete(data: DocData, rootId: string): Set<string> 
   return del;
 }
 
-/** Trvale smaže větev (koš přijde ve fázi 2). Odstraní i všechny vazby smazaných uzlů. */
+/** Trvale smaže větev (bez koše). Odstraní i všechny vazby smazaných uzlů. */
 export function deleteBranch(data: DocData, rootId: string): OpResult {
   if (!data.nodes[rootId]) return fail('Uzel neexistuje.');
   const del = branchNodesToDelete(data, rootId);
@@ -196,6 +198,14 @@ export function deleteBranch(data: DocData, rootId: string): OpResult {
     if (!del.has(e.source) && !del.has(e.target)) edges[e.id] = e;
   }
   return ok({ nodes, edges });
+}
+
+/** Nastaví stav uzlu (Hotovo, Znovu otevřít = Probíhá…). */
+export function setStatus(data: DocData, id: string, status: MapNode['status']): OpResult {
+  const n = data.nodes[id];
+  if (!n) return fail('Uzel neexistuje.');
+  if (n.status === status) return ok(data);
+  return updateNode(data, id, { status });
 }
 
 /** Změní pole uzlu (kromě id). */

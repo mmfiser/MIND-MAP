@@ -5,6 +5,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { buildHierarchyIndex, rootNodes, type HierarchyIndex } from '../../model/graph';
 import { wouldCreateCycle } from '../../model/hierarchy';
 import { colorHex } from '../../model/labels';
+import { projectIcon } from '../common/projectIcons';
 import type { MapDocument } from '../../model/types';
 import { useDocStore } from '../../store/docStore';
 import { toast, useUiStore } from '../../store/uiStore';
@@ -93,11 +94,20 @@ const TreeRow = memo(function TreeRow(p: RowProps) {
         ) : (
           <span style={{ width: 26, flex: 'none' }} />
         )}
+        {n.type === 'project' && projectIcon(n.icon) ? (
+          (() => {
+            const pi = projectIcon(n.icon)!;
+            return <pi.Icon size={16} className="tree-icon" style={{ color: colorHex(n.color) }} aria-label={pi.label} />;
+          })()
+        ) : (
+          <span
+            className={`tree-dot${n.type === 'project' ? '' : ' task'}`}
+            style={{ background: n.type === 'project' ? colorHex(n.color) : 'var(--text-3)' }}
+          />
+        )}
         <span
-          className={`tree-dot${n.type === 'project' ? '' : ' task'}`}
-          style={{ background: n.type === 'project' ? colorHex(n.color) : 'var(--text-3)' }}
-        />
-        <span className={`tree-title${n.type === 'project' ? ' project' : ''}${n.title.trim() ? '' : ' empty'}`}>
+          className={`tree-title${n.type === 'project' ? ' project' : ''}${n.title.trim() ? '' : ' empty'}${n.status === 'done' || n.status === 'cancelled' ? ' finished' : ''}`}
+        >
           {n.title.trim() || 'Bez názvu'}
         </span>
         {shared && (

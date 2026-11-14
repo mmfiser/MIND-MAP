@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addParentTo, moveUnder, parentCandidates, updateNodeFields } from '../../app/actions';
+import { RotateCcw, Trash2 } from 'lucide-react';
+import {
+  addParentTo,
+  emptyTrashWithConfirm,
+  moveUnder,
+  parentCandidates,
+  purgeFromTrash,
+  restoreFromTrash,
+  updateNodeFields,
+} from '../../app/actions';
+import { listTrash } from '../../model/trash';
 import { checkPersistence, getSettings, setDeviceName, wipeLocalData } from '../../app/session';
 import { parentEdges } from '../../model/graph';
 import { colorHex } from '../../model/labels';
@@ -301,6 +311,66 @@ function SettingsDialog() {
   );
 }
 
+const trashDateFmt = new Intl.DateTimeFormat('cs-CZ', { dateStyle: 'medium', timeStyle: 'short' });
+
+function TrashDialog() {
+  const open = useUiStore((s) => s.trashOpen);
+  const doc = useDocStore((s) => s.doc);
+  const items = useMemo(() => (doc && open ? listTrash(doc) : []), [doc, open]);
+  if (!open) return null;
+  const close = () => useUiStore.getState().set({ trashOpen: false });
+  return (
+    <Dialog
+      title="Koš"
+      onClose={close}
+      wide
+      footer={
+        <>
+          <button className="btn danger" disabled={!items.length} onClick={() => void emptyTrashWithConfirm()}>
+            <Trash2 size={16} /> Vysypat koš
+          </button>
+          <button className="btn primary" onClick={close}>
+            Zavřít
+          </button>
+        </>
+      }
+    >
+      {items.length === 0 ? (
+        <p>Koš je prázdný.</p>
+      ) : (
+        <div className="trash-list">
+          {items.map((it) => (
+            <div className="trash-item" key={it.batchId}>
+              <div className="trash-info">
+                <div className={`trash-title${it.title.trim() ? '' : ' empty'}`}>
+                  <span
+                    className={`tree-dot${it.type === 'project' ? '' : ' task'}`}
+                    style={{ background: it.type === 'project' ? 'var(--accent)' : 'var(--text-3)' }}
+                  />
+                  {it.title.trim() || 'Bez názvu'}
+                </div>
+                <div className="trash-meta">
+                  {it.count > 1 ? `${it.count} uzlů · ` : ''}
+                  smazáno {trashDateFmt.format(new Date(it.deletedAt))}
+                  {it.projectTitle ? ` · z projektu „${it.projectTitle.trim() || 'bez názvu'}“` : ''}
+                </div>
+              </div>
+              <div className="trash-actions">
+                <button className="btn small" onClick={() => void restoreFromTrash(it.batchId)}>
+                  <RotateCcw size={15} /> Obnovit
+                </button>
+                <button className="btn small ghost danger-text" onClick={() => void purgeFromTrash(it.batchId, it.title)}>
+                  Smazat trvale
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
 export function Toasts() {
   const toasts = useUiStore((s) => s.toasts);
   return (
@@ -333,6 +403,7 @@ export function Dialogs() {
       <NotesDialog />
       <PickerDialog />
       <SettingsDialog />
+      <TrashDialog />
       <PasswordDialogView />
       <ChoiceDialogView />
     </>

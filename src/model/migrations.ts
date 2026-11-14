@@ -3,6 +3,8 @@
  * migrations[n] převádí dokument verze n na verzi n + 1.
  * Po migraci se dokument normalizuje (doplní chybějící pole výchozími hodnotami).
  */
+import { isValidYmd } from './dates';
+import { toLastWorkingDayOnOrBefore } from './holidays';
 import { DEFAULT_PROJECT_COLOR } from './labels';
 import {
   SCHEMA_VERSION,
@@ -14,6 +16,7 @@ import {
   type NodeType,
   type Priority,
   type Status,
+  type TrashInfo,
 } from './types';
 
 export class MigrationError extends Error {
@@ -26,9 +29,23 @@ export class MigrationError extends Error {
 type Raw = Record<string, unknown>;
 export type Migration = (doc: Raw) => Raw;
 
-/** Registr migrací. Verze 1 je první – zatím žádné. */
+/** Registr migrací: MIGRATIONS[n] převádí verzi n na n + 1. */
 export const MIGRATIONS: Record<number, Migration> = {
-  // 1: (doc) => ({ ...doc, meta: { ...(doc.meta as Raw), schemaVersion: 2 }, ... }),
+  /**
+   * 1 → 2 (fáze 2): koš. Uzel smazaný bez informace o koši dostane vlastní
+   * položku koše. Ostatní pole (stav, priorita, data, štítky…) už v modelu byla;
+   * termíny a data zkontroluje normalizace.
+   */
+  1: (doc) => {
+    const nodes = isObj(doc.nodes) ? doc.nodes : {};
+    const out: Raw = {};
+    for (const [id, n] of Object.entries(nodes)) {
+      if (isObj(n) && typeof n.deletedAt === 'string' && n.deletedAt && !isObj(n.trash)) {
+        out[id] = { ...n, trash: { batchId: id, isRoot: true } };
+      } else out[id] = n;
+    }
+    return { ...doc, nodes: out };
+  },
 };
 
 const isObj = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -71,6 +88,15 @@ const optStr = (v: unknown): string | undefined => (typeof v === 'string' && v ?
 const oneOf = <T extends string>(v: unknown, list: T[], d: T): T =>
   list.includes(v as T) ? (v as T) : d;
 
+function normalizeTrash(id: string, v: unknown): TrashInfo {
+  if (!isObj(v)) return { batchId: id, isRoot: true };
+  const t: TrashInfo = { batchId: str(v.batchId) || id, isRoot: v.isRoot === true };
+  if (Array.isArray(v.parentIds)) t.parentIds = v.parentIds.filter((p): p is string => typeof p === 'string');
+  const pt = optStr(v.projectTitle);
+  if (pt) t.projectTitle = pt;
+  return t;
+}
+
 function normalizeNode(id: string, r: Raw): MapNode {
   const createdAt = str(r.createdAt, new Date(0).toISOString());
   const type = oneOf(r.type, NODE_TYPES, 'task');
@@ -101,12 +127,14 @@ function normalizeNode(id: string, r: Raw): MapNode {
   if (icon) node.icon = icon;
   const borderColor = optStr(r.borderColor);
   if (borderColor) node.borderColor = borderColor;
-  const startDate = optStr(r.startDate);
-  if (startDate) node.startDate = startDate;
-  const dueDate = optStr(r.dueDate);
-  if (dueDate) node.dueDate = dueDate;
+  if (isValidYmd(r.startDate)) node.startDate = r.startDate;
+  // Termín dokončení / deadline vždy na pracovní den (posun na poslední pracovní den před ním).
+  if (isValidYmd(r.dueDate)) node.dueDate = toLastWorkingDayOnOrBefore(r.dueDate);
   const deletedAt = optStr(r.deletedAt);
-  if (deletedAt) node.deletedAt = deletedAt;
+  if (deletedAt) {
+    node.deletedAt = deletedAt;
+    node.trash = normalizeTrash(id, r.trash);
+  }
   if (r.positionLocked === true) node.positionLocked = true;
   return node;
 }

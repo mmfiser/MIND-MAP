@@ -13,9 +13,12 @@ import {
   Save,
   Settings,
   Sun,
+  Trash,
   Trash2,
   Undo2,
 } from 'lucide-react';
+import { useMemo } from 'react';
+import { listTrash } from '../../model/trash';
 import { useCallback, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { addChildTo, addSiblingTo, createProject, deleteWithConfirm } from '../../app/actions';
 import { openFromFile, saveToFile } from '../../app/fileSync';
@@ -66,6 +69,9 @@ export function TopBar() {
   const canUndo = useDocStore((s) => s.past.length > 0);
   const canRedo = useDocStore((s) => s.future.length > 0);
   const dirty = useDocStore((s) => s.dirty);
+  const doc = useDocStore((s) => s.doc);
+  const trashCount = useMemo(() => (doc ? listTrash(doc).length : 0), [doc]);
+  const openTrash = () => ui().set({ trashOpen: true });
   const [more, setMore] = useState<{ x: number; y: number } | null>(null);
   const closeMore = useCallback(() => setMore(null), []);
   const fsa = hasFileSystemAccess();
@@ -120,6 +126,7 @@ export function TopBar() {
         'sep',
         { key: 'grid', label: gridVisible ? 'Skrýt mřížku' : 'Zobrazit mřížku', icon: <Grid3x3 size={18} />, onSelect: toggleGrid },
         { key: 'theme', label: themeLabel, icon: themeIcon, onSelect: toggleTheme },
+        { key: 'trash', label: trashCount ? `Koš (${trashCount})` : 'Koš', icon: <Trash size={18} />, onSelect: openTrash },
         { key: 'settings', label: 'Nastavení', icon: <Settings size={18} />, onSelect: () => ui().set({ settingsOpen: true }) },
         { key: 'lock', label: 'Zamknout', icon: <Lock size={18} />, onSelect: () => void lock() },
       ]
@@ -170,6 +177,9 @@ export function TopBar() {
       {fsa && <Tb icon={<FilePlus2 size={I} />} label="Uložit jako" title="Uložit jako… (Ctrl+Shift+S)" onClick={() => void saveToFile(true)} />}
       <Tb icon={<FolderOpen size={I} />} label="Otevřít" title="Otevřít soubor" onClick={() => void openFromFile()} />
       <div className="sep" />
+      <Tb icon={<Trash size={I} />} label="Koš" title={trashCount ? `Koš (${trashCount})` : 'Koš'} onClick={openTrash}>
+        {trashCount > 0 && <span className="count-badge">{trashCount}</span>}
+      </Tb>
       <Tb icon={<Grid3x3 size={I} />} label="Mřížka" onClick={toggleGrid} active={gridVisible} />
       <Tb icon={themeIcon} label={theme === 'dark' ? 'Světlý' : 'Tmavý'} title={themeLabel} onClick={toggleTheme} />
       <Tb icon={<MoreHorizontal size={I} />} label="Další" onClick={openMore} />
