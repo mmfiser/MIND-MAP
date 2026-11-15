@@ -1,7 +1,8 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
-import { Ban, CalendarClock, Check, Link2, ListChecks, ListTree, StickyNote } from 'lucide-react';
+import { Ban, CalendarClock, Check, Link2, ListChecks, ListTree, StickyNote, TriangleAlert } from 'lucide-react';
 import { memo, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
 import { toggleDone } from '../../app/actions';
+import { toast } from '../../store/uiStore';
 import type { DeadlineState } from '../../model/deadline';
 import { plural } from '../../model/progress';
 import type { NodeType, Priority, Status } from '../../model/types';
@@ -30,11 +31,32 @@ export interface FlowNodeData extends Record<string, unknown> {
   checklist?: { done: number; total: number };
   tags: string[];
   moreTags: number;
+  /** Termín je dříve než začátek. */
+  dateConflict: boolean;
 }
 
 export type FlowNode = Node<FlowNodeData, 'mm'>;
 
 const stop = (e: PointerEvent | MouseEvent) => e.stopPropagation();
+
+function ConflictBadge({ kind }: { kind: NodeType }) {
+  const text = kind === 'project' ? 'Deadline je dříve než datum zahájení.' : 'Termín dokončení je dříve než začátek.';
+  return (
+    <button
+      className="chip conflict nodrag nopan"
+      title={text}
+      aria-label={text}
+      onPointerDown={stop}
+      onDoubleClick={stop}
+      onClick={(e) => {
+        e.stopPropagation();
+        toast(text, 'info');
+      }}
+    >
+      <TriangleAlert size={12} />
+    </button>
+  );
+}
 
 function DueBadge({ due, state }: { due: string; state: DeadlineState }) {
   const title =
@@ -51,7 +73,7 @@ function Chips({ data }: { data: FlowNodeData }) {
   const st = STATUS_META[data.status];
   const showStatus = data.status === 'in_progress' || data.status === 'waiting' || data.status === 'blocked';
   const any =
-    showStatus || data.due || data.subtasks || data.checklist || data.tags.length || data.hasNotes || data.priority === 'critical';
+    showStatus || data.due || data.dateConflict || data.subtasks || data.checklist || data.tags.length || data.hasNotes || data.priority === 'critical';
   if (!any) return null;
   return (
     <div className="chips">
@@ -63,6 +85,7 @@ function Chips({ data }: { data: FlowNodeData }) {
         </span>
       )}
       {data.due && <DueBadge due={data.due} state={data.dueState} />}
+      {data.dateConflict && <ConflictBadge kind={data.kind} />}
       {data.subtasks && (
         <span className="chip" title="Hotové přímé podúkoly">
           <ListTree size={12} />
@@ -89,6 +112,7 @@ function Chips({ data }: { data: FlowNodeData }) {
 function TaskNode({ id, data, selected }: { id: string; data: FlowNodeData; selected: boolean }) {
   const done = data.status === 'done';
   const cancelled = data.status === 'cancelled';
+  const taskIcon = projectIcon(data.icon);
   const style: CSSProperties & Record<string, string | undefined> = { '--prio': PRIORITY_META[data.priority].color };
   if (data.borderColor) style['--node-border'] = data.borderColor;
   const cls = [
@@ -119,6 +143,7 @@ function TaskNode({ id, data, selected }: { id: string; data: FlowNodeData; sele
           {done && <Check size={14} strokeWidth={3} />}
           {cancelled && <Ban size={14} strokeWidth={2.5} />}
         </button>
+        {taskIcon && <taskIcon.Icon size={15} className="task-icon" aria-label={taskIcon.label} />}
         <span className={`title${data.title.trim() ? '' : ' empty'}`}>{data.title.trim() || 'Bez názvu'}</span>
       </div>
       <Chips data={data} />
@@ -170,12 +195,13 @@ function ProjectNode({ data, selected }: { data: FlowNodeData; selected: boolean
           </div>
         </div>
       )}
-      {(data.due || data.priority === 'high' || data.priority === 'critical' || data.tags.length > 0) && (
+      {(data.due || data.dateConflict || data.priority === 'high' || data.priority === 'critical' || data.tags.length > 0) && (
         <div className="chips">
           {(data.priority === 'high' || data.priority === 'critical') && (
             <span className={`chip prio-${data.priority}`}>{PRIORITY_META[data.priority].label}</span>
           )}
           {data.due && <DueBadge due={data.due} state={data.dueState} />}
+          {data.dateConflict && <ConflictBadge kind={data.kind} />}
           {data.tags.map((t) => (
             <span className="chip tag" key={t}>
               #{t}

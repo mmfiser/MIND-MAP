@@ -31,6 +31,11 @@ Aktuální stav: **fáze 2**.
 - **Svátky ČR** se počítají offline pro libovolný rok:
   - pevné: 1. 1., 1. 5., 8. 5., 5. 7., 6. 7., 28. 9., 28. 10., 17. 11., 24.–26. 12.;
   - pohyblivé: Velký pátek a Velikonoční pondělí (Velikonoce se počítají algoritmem).
+- **Termín dříve než začátek** je povolený, ale aplikace upozorní:
+  - oznámením při nastavení data;
+  - oranžovou hláškou v detailu;
+  - ikonkou ⚠ na uzlu (vysvětlení v tooltipu nebo po klepnutí).
+  Kontroluje se i po automatickém posunu termínu a při načtení dokumentu. Stejné datum je v pořádku.
 - **Přechod přes půlnoc:** zvýraznění se přepočítá samo, i když je aplikace otevřená přes noc nebo se vrátí z pozadí.
 
 ### Procento dokončení projektu
@@ -42,7 +47,7 @@ Aktuální stav: **fáze 2**.
 ### Checklist, štítky, ikony
 - **Checklist** v detailu: Enter přidá další položku, Backspace v prázdné položce ji smaže, pořadí se mění tažením za úchyt (myš i prst). Na uzlu se ukazuje „2/5“. Checklist neovlivňuje stav ani procenta.
 - **Štítky:** našeptávání z již použitých štítků, přidání Enterem, odebrání křížkem. Na uzlu se zobrazí 2 štítky a zbytek jako „+N“.
-- **Ikony projektů:** 41 ikon ve skupinách IT, Železnice, IZS a Management. Ikona se zobrazí na projektu i v rejstříku.
+- **Ikony projektů a úkolů:** 58 ikon ve skupinách IT, Hardware, Železnice, IZS a Management s vyhledáváním podle českého popisku (bez ohledu na diakritiku). Ikona se zobrazí na uzlu i v rejstříku.
 
 ### Koš
 - Smazání přesune uzel i s větví do koše. Vazby zůstanou v dokumentu jako neaktivní, takže obnovení vrátí rodiče, pořadí mezi sourozenci i pozici.

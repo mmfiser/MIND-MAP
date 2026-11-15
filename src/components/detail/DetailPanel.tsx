@@ -9,7 +9,7 @@ import {
   toggleDone,
   updateNodeFields,
 } from '../../app/actions';
-import { ChecklistEditor, DateField, IconPicker, PrioritySelect, StatusSelect, TagInput } from './Fields';
+import { ChecklistEditor, DateConflictHint, DateField, IconPicker, PrioritySelect, StatusSelect, TagInput } from './Fields';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { parentEdges } from '../../model/graph';
 import { NODE_TYPE_LABELS, PROJECT_PALETTE, colorHex } from '../../model/labels';
@@ -141,6 +141,7 @@ function DetailContent({ node }: { node: MapNode }) {
         <DateField node={node} field="startDate" label={node.type === 'project' ? 'Zahájení' : 'Začátek'} />
         <DateField node={node} field="dueDate" label={node.type === 'project' ? 'Deadline' : 'Termín dokončení'} />
       </div>
+      <DateConflictHint node={node} />
       <div className="meta-row">
         <span>Vytvořeno</span>
         <span>{dateFmt.format(new Date(node.createdAt))}</span>
@@ -187,6 +188,8 @@ function DetailContent({ node }: { node: MapNode }) {
       {node.type === 'project' && <IconPicker node={node} />}
 
       <TagInput node={node} />
+
+      {node.type !== 'project' && <IconPicker node={node} />}
 
       <ChecklistEditor node={node} />
 

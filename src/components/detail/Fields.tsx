@@ -1,4 +1,4 @@
-import { GripVertical, Plus, Trash2, X } from 'lucide-react';
+import { GripVertical, Plus, Search, Trash2, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   addChecklistItem,
@@ -17,7 +17,8 @@ import { usePointerSort } from '../../hooks/usePointerSort';
 import { suggestTags, usedTags } from '../../model/tags';
 import type { MapNode } from '../../model/types';
 import { useDocStore } from '../../store/docStore';
-import { ICON_GROUPS, projectIcon } from '../common/projectIcons';
+import { filterIconGroups, projectIcon } from '../common/projectIcons';
+import { dueBeforeStart } from '../../model/deadline';
 import { PRIORITY_META, PRIORITY_ORDER, STATUS_META, STATUS_ORDER } from '../common/statusMeta';
 
 export function StatusSelect({ node }: { node: MapNode }) {
@@ -83,12 +84,21 @@ export function DateField({ node, field, label }: { node: MapNode; field: 'start
 
 export function IconPicker({ node }: { node: MapNode }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const current = projectIcon(node.icon);
+  const groups = useMemo(() => filterIconGroups(query), [query]);
   return (
     <div className="field">
-      <span>Ikona projektu</span>
+      <span>{node.type === 'project' ? 'Ikona projektu' : 'Ikona úkolu'}</span>
       <div className="icon-current">
-        <button className="btn small" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <button
+          className="btn small"
+          onClick={() => {
+            setOpen((o) => !o);
+            setQuery('');
+          }}
+          aria-expanded={open}
+        >
           {current ? <current.Icon size={18} /> : null}
           {current ? current.label : 'Vybrat ikonu'}
         </button>
@@ -100,7 +110,20 @@ export function IconPicker({ node }: { node: MapNode }) {
       </div>
       {open && (
         <div className="icon-picker">
-          {ICON_GROUPS.map((g) => (
+          <div className="icon-search">
+            <Search size={16} aria-hidden />
+            <input
+              className="input"
+              type="search"
+              value={query}
+              placeholder="Hledat ikonu (např. vysilac, myš)…"
+              aria-label="Hledat ikonu"
+              onChange={(e) => setQuery(e.target.value)}
+              autoFocus={!window.matchMedia('(pointer: coarse)').matches}
+            />
+          </div>
+          {groups.length === 0 && <div className="muted">Žádná ikona neodpovídá hledání.</div>}
+          {groups.map((g) => (
             <div key={g.name}>
               <div className="icon-group-name">{g.name}</div>
               <div className="icon-grid">
@@ -292,6 +315,19 @@ export function ChecklistEditor({ node }: { node: MapNode }) {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Trvalá hláška v detailu, dokud je termín dříve než začátek. */
+export function DateConflictHint({ node }: { node: MapNode }) {
+  if (!dueBeforeStart(node)) return null;
+  return (
+    <div className="date-warning" role="status">
+      <TriangleAlert size={16} />
+      <span>
+        {node.type === 'project' ? 'Deadline je dříve než datum zahájení.' : 'Termín dokončení je dříve než začátek.'}
+      </span>
     </div>
   );
 }

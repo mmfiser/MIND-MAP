@@ -6,6 +6,7 @@ import { DEFAULT_PROJECT_COLOR, PROJECT_PALETTE } from '../model/labels';
 import { createNode } from '../model/factory';
 import { buildHierarchyIndex, childEdges, parentEdges } from '../model/graph';
 import { formatShort, formatWithWeekday, isValidYmd } from '../model/dates';
+import { dueBeforeStart } from '../model/deadline';
 import * as H from '../model/hierarchy';
 import { nonWorkingReason, toLastWorkingDayOnOrBefore } from '../model/holidays';
 import { normalizeTag } from '../model/tags';
@@ -285,18 +286,22 @@ export function setPriorityOf(id: string, priority: Priority): void {
 export function setDateOf(id: string, field: 'startDate' | 'dueDate', value: string | null): void {
   const n = data()?.nodes[id];
   if (!n) return;
+  const messages: string[] = [];
   let v: string | undefined = value && isValidYmd(value) ? value : undefined;
   if (v && field === 'dueDate') {
     const shifted = toLastWorkingDayOnOrBefore(v);
     if (shifted !== v) {
       const today = useUiStore.getState().today;
-      toast(
+      messages.push(
         `Termín ${formatShort(v, today)} připadá na ${nonWorkingReason(v)}, posunut na ${formatWithWeekday(shifted, today)}`,
-        'info',
       );
       v = shifted;
     }
   }
+  // Kontrola až po případném posunu – posun může konflikt vytvořit.
+  const next = { startDate: field === 'startDate' ? v : n.startDate, dueDate: field === 'dueDate' ? v : n.dueDate };
+  if (v && dueBeforeStart(next)) messages.push('Termín je dříve než začátek.');
+  if (messages.length) toast(messages.join(' '), 'info');
   if (n[field] === v) return;
   run((x) => {
     const r = H.updateNode(x, id, {});

@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import { GRID, canvasApi, commitPositions, createProject } from '../../app/actions';
 import { getSettings, updateSettings } from '../../app/session';
 import { formatShort } from '../../model/dates';
-import { deadlineState } from '../../model/deadline';
+import { deadlineState, dueBeforeStart } from '../../model/deadline';
 import { buildHierarchyIndex, owningProject, type HierarchyIndex } from '../../model/graph';
 import { checklistProgress, projectProgress, subtaskProgress } from '../../model/progress';
 import { colorHex, contrastText } from '../../model/labels';
@@ -59,6 +59,7 @@ function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string)
     dueState: deadlineState(n.dueDate, today, n.status),
     tags: n.tags.slice(0, MAX_TAGS_ON_NODE),
     moreTags: Math.max(0, n.tags.length - MAX_TAGS_ON_NODE),
+    dateConflict: dueBeforeStart(n),
   };
   if (n.dueDate) data.due = formatShort(n.dueDate, today);
   if (n.type === 'project') {

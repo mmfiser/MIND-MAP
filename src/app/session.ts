@@ -2,6 +2,7 @@
  * Životní cyklus aplikace: první spuštění, odemknutí, zamčení, nastavení.
  */
 import { lockSession } from '../crypto/keySession';
+import { notifyDateConflicts } from './dateCheck';
 import { DecryptError, EnvelopeFormatError } from '../crypto/envelope';
 import { createEmptyDocument } from '../model/factory';
 import { MigrationError } from '../model/migrations';
@@ -69,6 +70,7 @@ function enterReady(doc: MapDocument): void {
   ds.load(doc, { dirty: settings.dirty, baseRevision: settings.baseRevision, resetHistory: true });
   startAutosave();
   useUiStore.getState().set({ phase: 'ready', selectedId: null, detailOpen: false });
+  notifyDateConflicts(doc);
 }
 
 /** První spuštění: název zařízení + nové heslo. */

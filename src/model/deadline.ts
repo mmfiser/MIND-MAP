@@ -21,3 +21,18 @@ export function deadlineState(due: Ymd | undefined, today: Ymd, status: Status):
   const wd = workingDaysBetween(today, due);
   return wd >= 1 && wd <= SOON_WORKING_DAYS ? 'soon' : 'none';
 }
+
+/**
+ * Termín dokončení / deadline je dříve než začátek / zahájení.
+ * Je to povolené, aplikace jen upozorní. Stejné datum je v pořádku.
+ */
+export function dueBeforeStart(n: { startDate?: Ymd; dueDate?: Ymd }): boolean {
+  return !!n.startDate && !!n.dueDate && isValidYmd(n.startDate) && isValidYmd(n.dueDate) && n.dueDate < n.startDate;
+}
+
+/** Počet živých uzlů s termínem dříve než začátkem (kontrola při načtení dokumentu). */
+export function countDueBeforeStart(nodes: Record<string, { startDate?: Ymd; dueDate?: Ymd; deletedAt?: string }>): number {
+  let n = 0;
+  for (const node of Object.values(nodes)) if (!node.deletedAt && dueBeforeStart(node)) n++;
+  return n;
+}

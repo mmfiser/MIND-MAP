@@ -94,10 +94,17 @@ const TreeRow = memo(function TreeRow(p: RowProps) {
         ) : (
           <span style={{ width: 26, flex: 'none' }} />
         )}
-        {n.type === 'project' && projectIcon(n.icon) ? (
+        {projectIcon(n.icon) ? (
           (() => {
             const pi = projectIcon(n.icon)!;
-            return <pi.Icon size={16} className="tree-icon" style={{ color: colorHex(n.color) }} aria-label={pi.label} />;
+            return (
+              <pi.Icon
+                size={16}
+                className="tree-icon"
+                style={{ color: n.type === 'project' ? colorHex(n.color) : 'var(--text-2)' }}
+                aria-label={pi.label}
+              />
+            );
           })()
         ) : (
           <span
