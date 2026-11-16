@@ -83,17 +83,18 @@ describe('koš – smazání a obnovení větve', () => {
   });
 
   it('vazba, která by po obnovení vytvořila cyklus, se zahodí s oznámením', () => {
-    // A11 je sdílený (rodiče A1 a B1). Smaž A1 → A11 přežije pod B1.
+    // A11 je sdílený (rodiče A1 a B1), A1 má rodiče A a A2. Smaž A1 → A11 přežije pod B1.
     let d = unwrap(addParent(sample(), 'A11', 'B1'));
+    d = unwrap(addParent(d, 'A1', 'A2'));
     d = unwrap(trashBranch(d, 'A1', { batchId: 'b' }));
-    // Mezitím přesuň A pod A11 (A1 je v koši, takže to teď cyklus není).
-    d = unwrap(moveBranch(d, 'A', null, 'A11'));
+    // Mezitím přesuň A2 pod A11 (A1 je v koši, takže to teď cyklus není).
+    d = unwrap(moveBranch(d, 'A2', 'A', 'A11'));
     const r = restored(d, 'b');
-    // A → A1 → A11 → A by byl cyklus: vazba A1 → A11 se nevrátí.
-    expect(parentsOf(r.data, 'A11')).toEqual(['B1']);
+    // A1 → A11 → A2 → A1 by byl cyklus: vazba A2 → A1 se nevrátí.
+    expect(parentsOf(r.data, 'A11')).toEqual(['A1', 'B1']);
     expect(parentsOf(r.data, 'A1')).toEqual(['A']);
     expect(r.notices).toHaveLength(1);
-    expect(r.notices[0]).toMatch(/„A11“ ztratil rodiče „A1“/);
+    expect(r.notices[0]).toMatch(/„A1“ ztratil rodiče „A2“/);
   });
 });
 

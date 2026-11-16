@@ -58,7 +58,25 @@ export const MIGRATIONS: Record<number, Migration> = {
    * poduzly milníku, cykly) dělá normalizace, která běží po každé migraci.
    */
   2: (doc) => doc,
+  /**
+   * 3 → 4: projekt nesmí být v hierarchii podřízený. Hierarchické vazby, kde je
+   * projekt potomkem, odstraní normalizace (a nahlásí je – viz migrationReport).
+   */
+  3: (doc) => doc,
 };
+
+/** Co normalizace při načtení opravila (pro oznámení uživateli). */
+export interface MigrationReport {
+  /** odebrané hierarchické vazby, kde byl projekt potomkem – podle projektu */
+  removedProjectParents: { projectId: string; projectTitle: string; count: number }[];
+}
+
+const reports = new WeakMap<MapDocument, MigrationReport>();
+
+/** Zpráva o opravách pro dokument vrácený z migrateDocument / normalizeDocument. */
+export function migrationReport(doc: MapDocument): MigrationReport | undefined {
+  return reports.get(doc);
+}
 
 const isObj = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -173,6 +191,7 @@ export function normalizeDocument(raw: Raw): MapDocument {
     }
   }
   const candidates: MapEdge[] = [];
+  const removed = new Map<string, number>();
   if (isObj(raw.edges)) {
     for (const [id, r] of Object.entries(raw.edges)) {
       if (!isObj(r)) continue;
@@ -182,6 +201,11 @@ export function normalizeDocument(raw: Raw): MapDocument {
       let kind = oneOf(r.kind, EDGE_KINDS, 'related');
       // Milník nemůže mít poduzly – takovou vazbu zachovej jako souvislost.
       if (kind === 'hierarchy' && nodes[source]!.type === 'milestone') kind = 'related';
+      // Projekt nemůže být podřízený – vazbu odeber a nahlas.
+      if (kind === 'hierarchy' && nodes[target]!.type === 'project') {
+        removed.set(target, (removed.get(target) ?? 0) + 1);
+        continue;
+      }
       candidates.push({
         id,
         kind,
@@ -192,7 +216,17 @@ export function normalizeDocument(raw: Raw): MapDocument {
       });
     }
   }
-  return { meta, nodes, edges: cleanEdges(candidates) };
+  const doc: MapDocument = { meta, nodes, edges: cleanEdges(candidates) };
+  if (removed.size) {
+    reports.set(doc, {
+      removedProjectParents: [...removed].map(([projectId, count]) => ({
+        projectId,
+        projectTitle: nodes[projectId]!.title,
+        count,
+      })),
+    });
+  }
+  return doc;
 }
 
 /**

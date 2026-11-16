@@ -37,7 +37,7 @@ import {
 import { flushAutosave } from '../storage/persist';
 import { useDocStore } from '../store/docStore';
 import { askPassword, choose, toast, useUiStore } from '../store/uiStore';
-import { notifyDateConflicts } from './dateCheck';
+import { notifyDateConflicts, notifyMigrationReport } from './dateCheck';
 import { getSettings, updateSettings } from './session';
 
 const fmt = new Intl.DateTimeFormat('cs-CZ', { dateStyle: 'medium', timeStyle: 'medium' });
@@ -114,6 +114,7 @@ function loadFromFile(fileDoc: MapDocument): void {
   });
   useUiStore.getState().set({ selectedId: null, detailOpen: false });
   useUiStore.getState().fitAll();
+  notifyMigrationReport(fileDoc);
   notifyDateConflicts(fileDoc);
 }
 

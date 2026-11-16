@@ -104,6 +104,14 @@ function cycleReason(data: DocData, parentId: string, childId: string, ignoreEdg
 export const MILESTONE_NO_CHILDREN =
   'Milník nemůže mít poduzly. Další úkoly na něj navažte závislostí nebo souvislostí.';
 
+export const PROJECT_NO_PARENT =
+  'Projekt nemůže být podřízený jinému uzlu. Pro propojení použijte závislost nebo souvislost.';
+
+/** Smí mít uzel v hierarchii rodiče? (projekt ne – projekty jsou vždy na nejvyšší úrovni) */
+export function childRuleViolation(data: DocData, childId: string, childType?: MapNode['type']): string | null {
+  return (childType ?? data.nodes[childId]?.type) === 'project' ? PROJECT_NO_PARENT : null;
+}
+
 /** Smí být uzel rodičem v hierarchii? (milník ne) */
 export function parentRuleViolation(data: DocData, parentId: string): string | null {
   return data.nodes[parentId]?.type === 'milestone' ? MILESTONE_NO_CHILDREN : null;
@@ -132,7 +140,7 @@ export function addNode(data: DocData, node: MapNode): DocData {
 /** Přidá nový uzel jako poslední dítě rodiče. */
 export function addChild(data: DocData, parentId: string, node: MapNode): OpResult {
   if (!exists(data, parentId)) return fail('Nadřazený uzel neexistuje.');
-  const rule = parentRuleViolation(data, parentId);
+  const rule = parentRuleViolation(data, parentId) ?? childRuleViolation(data, node.id, node.type);
   if (rule) return fail(rule);
   const withNode = addNode(data, node);
   return ok(withEdge(withNode, createEdge('hierarchy', parentId, node.id, nextOrder(data, parentId))));
@@ -146,6 +154,8 @@ export function addSibling(data: DocData, siblingId: string, node: MapNode): OpR
   if (!exists(data, siblingId)) return fail('Uzel neexistuje.');
   const parentEdge = parentEdges(data, siblingId)[0];
   if (!parentEdge) return ok(addNode(data, node));
+  const childRule = childRuleViolation(data, node.id, node.type);
+  if (childRule) return fail(childRule);
   const parentId = parentEdge.source;
   const kids = childEdges(data, parentId);
   const order = parentEdge.order + 1;
@@ -162,7 +172,7 @@ export function addSibling(data: DocData, siblingId: string, node: MapNode): OpR
 /** Přidá uzlu dalšího rodiče (vznikne sdílený uzel). */
 export function addParent(data: DocData, childId: string, parentId: string): OpResult {
   if (!exists(data, childId) || !exists(data, parentId)) return fail('Uzel neexistuje.');
-  const rule = parentRuleViolation(data, parentId);
+  const rule = parentRuleViolation(data, parentId) ?? childRuleViolation(data, childId);
   if (rule) return fail(rule);
   if (findEdge(data, 'hierarchy', parentId, childId)) {
     return fail(`${title(data, parentId)} už je nadřazeným uzlem ${title(data, childId)}.`);
@@ -196,7 +206,7 @@ export function moveBranch(
 ): OpResult {
   if (!exists(data, nodeId) || !exists(data, toParentId)) return fail('Uzel neexistuje.');
   if (fromParentId === toParentId) return ok(data);
-  const rule = parentRuleViolation(data, toParentId);
+  const rule = parentRuleViolation(data, toParentId) ?? childRuleViolation(data, nodeId);
   if (rule) return fail(rule);
   let oldEdge: MapEdge | undefined;
   if (fromParentId) {

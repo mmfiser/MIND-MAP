@@ -5,7 +5,7 @@ import { goToNode, handlePickTarget, startLinkPick, toggleCollapse } from '../..
 import { Menu, type MenuEntry } from '../common/Menu';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { buildHierarchyIndex, rootNodes, type HierarchyIndex } from '../../model/graph';
-import { describeCycle, findCyclePath, parentRuleViolation } from '../../model/hierarchy';
+import { childRuleViolation, describeCycle, findCyclePath, parentRuleViolation } from '../../model/hierarchy';
 import { colorHex } from '../../model/labels';
 import { projectIcon } from '../common/projectIcons';
 import type { MapDocument } from '../../model/types';
@@ -265,7 +265,7 @@ export function Sidebar() {
         const fromEdge = Object.values(d.edges).find(
           (e) => e.kind === 'hierarchy' && e.source === state.fromParentId && e.target === state.nodeId,
         );
-        const rule = parentRuleViolation(d, over);
+        const rule = childRuleViolation(d, state.nodeId) ?? parentRuleViolation(d, over);
         const path = rule ? null : findCyclePath(d, 'hierarchy', over, state.nodeId, fromEdge?.id);
         valid = !rule && !path;
         if (rule) reason = rule;

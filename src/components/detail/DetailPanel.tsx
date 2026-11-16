@@ -162,7 +162,7 @@ function DetailContent({ node }: { node: MapNode }) {
       </div>
 
       <LinksSection node={node} />
-      <div className="field">
+      {node.type !== 'project' && <div className="field">
         <div className="detail-actions">
           <button
             className="btn small"
@@ -174,7 +174,7 @@ function DetailContent({ node }: { node: MapNode }) {
             <GitFork size={16} /> Přidat rodiče…
           </button>
         </div>
-      </div>
+      </div>}
 
       {node.type === 'project' && <IconPicker node={node} />}
 

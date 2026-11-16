@@ -227,6 +227,10 @@ export function setNodeType(id: string, type: NodeType): void {
   const d = data();
   const n = d?.nodes[id];
   if (!d || !n || n.type === type) return;
+  if (type === 'project' && parentEdges(d, id).length) {
+    toast('Uzel je podřízený jinému uzlu – projekt musí být na nejvyšší úrovni. Nejdřív ho odpojte od rodiče.', 'error');
+    return;
+  }
   if (type === 'milestone' && childEdges(d, id).length) {
     toast('Uzel má poduzly – milník nemůže mít poduzly. Nejdřív je přesuňte jinam.', 'error');
     return;

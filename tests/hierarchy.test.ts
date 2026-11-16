@@ -64,7 +64,7 @@ describe('kontrola cyklů', () => {
 
   it('addParent odmítne cyklus s českým vysvětlením', () => {
     const d = sample();
-    const r = addParent(d, 'A', 'A11');
+    const r = addParent(d, 'A1', 'A11');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toMatch(/cyklus/);
     const self = addParent(d, 'A1', 'A1');
@@ -125,7 +125,7 @@ describe('přesun větve', () => {
   });
 
   it('odmítne přesun pod vlastního potomka', () => {
-    const r = moveBranch(sample(), 'A', null, 'A11');
+    const r = moveBranch(sample(), 'A1', 'A', 'A11');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toMatch(/cyklus/);
   });

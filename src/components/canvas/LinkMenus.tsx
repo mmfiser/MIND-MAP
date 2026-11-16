@@ -117,6 +117,8 @@ export function LinkTypeMenu() {
   const s = nodeName(doc, m.source);
   const t = nodeName(doc, m.target);
   const sharedNote = doc && parentEdges(doc, m.target).length > 0;
+  // Projekt nemůže být poduzlem, milník nemůže mít poduzly.
+  const canBeChild = doc?.nodes[m.target]?.type !== 'project' && doc?.nodes[m.source]?.type !== 'milestone';
   const entries: MenuEntry[] = [
     { title: `Nová vazba: ${s} → ${t}` },
     {
@@ -135,15 +137,17 @@ export function LinkTypeMenu() {
         if (createLink('related', m.source, m.target)) toast('Souvislost vytvořena.', 'success');
       },
     },
-    {
+  ];
+  if (canBeChild) {
+    entries.push({
       key: 'child',
       label: `Přidat ${t} jako poduzel`,
       icon: <GitBranchPlus size={I} />,
       onSelect: () => {
         if (createLink('hierarchy', m.source, m.target)) toast(sharedNote ? 'Přidáno jako poduzel – uzel je teď sdílený.' : 'Přidáno jako poduzel.', 'success');
       },
-    },
-  ];
+    });
+  }
   return <Menu x={m.x} y={m.y} entries={entries} onClose={close} />;
 }
 

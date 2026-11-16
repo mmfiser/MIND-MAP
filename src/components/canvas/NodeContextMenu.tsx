@@ -87,8 +87,9 @@ export function nodeMenuEntries(nodeId: string, at?: { x: number; y: number }): 
         : { key: 'collapse', label: 'Sbalit větev', icon: <FoldVertical size={I} />, kbd: 'Mezera', onSelect: () => toggleCollapse(nodeId) },
     );
   }
-  entries.push(
-    { key: 'notes', label: 'Poznámky', icon: <StickyNote size={I} />, onSelect: () => ui.set({ notesFor: nodeId }) },
+  entries.push({ key: 'notes', label: 'Poznámky', icon: <StickyNote size={I} />, onSelect: () => ui.set({ notesFor: nodeId }) });
+  // Projekt je vždy na nejvyšší úrovni – nejde ho přesunout pod jiný uzel.
+  if (node.type !== 'project') entries.push(
     'sep',
     {
       key: 'move',

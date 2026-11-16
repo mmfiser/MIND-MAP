@@ -8,7 +8,7 @@
  */
 import { createEdge } from './factory';
 import { childEdges, compareByAge } from './graph';
-import { describeCycle, findCyclePath, parentRuleViolation } from './hierarchy';
+import { childRuleViolation, describeCycle, findCyclePath, parentRuleViolation } from './hierarchy';
 import type { DocData, EdgeKind, MapEdge, OpResult } from './types';
 
 const fail = (reason: string): OpResult => ({ ok: false, reason });
@@ -56,7 +56,7 @@ export function validateLink(
   if (!live(data, source) || !live(data, target)) return 'Uzel neexistuje.';
   if (source === target) return `Uzel ${name(data, source)} nemůže být propojen sám se sebou.`;
   if (kind === 'hierarchy') {
-    const rule = parentRuleViolation(data, source);
+    const rule = childRuleViolation(data, target) ?? parentRuleViolation(data, source);
     if (rule) return rule;
   }
   if (findDuplicate(data, kind, source, target, ignoreEdgeId)) {

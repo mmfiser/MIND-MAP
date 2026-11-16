@@ -397,7 +397,7 @@ describe('migrace na schéma 3', () => {
   it('soubor z fáze 2 se načte beze ztráty dat', () => {
     const doc3 = migrateDocument(JSON.parse(JSON.stringify(v2)));
     expect(doc3.meta).toMatchObject({ schemaVersion: SCHEMA_VERSION, docId: 'doc-2', revision: 7 });
-    expect(SCHEMA_VERSION).toBe(3);
+    expect(SCHEMA_VERSION).toBe(4);
     expect(doc3.nodes.t).toMatchObject({ status: 'done', icon: 'laptop', startDate: '2026-11-11', notes: 'n' });
     expect(doc3.nodes.t!.checklist).toHaveLength(1);
     expect(doc3.nodes.d!.trash).toMatchObject({ batchId: 'b', parentIds: ['p'] });

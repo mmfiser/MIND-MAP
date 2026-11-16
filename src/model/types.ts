@@ -3,7 +3,7 @@
  * Ve fázi 1 UI používá jen část polí, ostatní mají výchozí hodnoty.
  */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export type NodeType = 'project' | 'task' | 'milestone';
 export type Status = 'new' | 'in_progress' | 'waiting' | 'blocked' | 'done' | 'cancelled';

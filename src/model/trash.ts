@@ -118,6 +118,12 @@ export function restoreBatch(data: DocData, batchId: string): RestoreResult | { 
   for (const e of reactivated) {
     // Mezitím vznikla stejná vazba – obnovená by byla duplicitní.
     if (findDuplicate(cur, e.kind, e.source, e.target, e.id)) continue;
+    if (e.kind === 'hierarchy' && nodes[e.target]?.type === 'project') {
+      notices.push(
+        `Projekt ${label(nodes[e.target])} nemůže být podřízený uzlu ${label(nodes[e.source])} – tato vazba nebyla obnovena.`,
+      );
+      continue;
+    }
     if (wouldCreateCycle(cur, e.kind, e.source, e.target)) {
       const child = label(nodes[e.target]);
       const parent = label(nodes[e.source]);

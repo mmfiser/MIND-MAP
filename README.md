@@ -67,6 +67,7 @@ Aktuální stav: **fáze 2**.
 | Závislost | A blokuje B, cykly zakázané | čárkovaná čára se šipkou u B, v barvě projektu blokujícího uzlu |
 | Souvislost | volný odkaz bez logiky, cykly povolené | tečkovaná šedá čára |
 
+- **Projekty jsou vždy na nejvyšší úrovni:** projekt nemůže být v hierarchii podřízený žádnému uzlu (ani jinému projektu). Platí to pro tažení, Propojit, přepojení vazby, Přesunout pod…, Přidat rodiče, rejstřík i obnovení z koše. Závislosti a souvislosti s projekty jsou povolené.
 - Všechny typy používají plovoucí vazby (střed nejbližší hrany). Souběžné vazby mezi stejnou dvojicí uzlů se odsadí do oblouku.
 - Vazba na sebe a duplicitní vazba stejného typu (u souvislosti v obou směrech) nejsou dovolené. Pokus o cyklus aplikace odmítne a vypíše uzly v cyklu.
 - **Vytvoření myší:** po najetí na uzel se ukážou konektory na čtyřech hranách; tažení na jiný uzel otevře nabídku Závislost / Souvislost / Přidat jako poduzel.
@@ -102,7 +103,7 @@ Aktuální stav: **fáze 2**.
 Závislosti a souvislosti smazaného uzlu zůstanou neaktivní a obnovení je vrátí (s kontrolou cyklů). Trvalé smazání je odstraní.
 
 ### Verze dat
-Schéma dokumentu je ve verzi **3**. Soubory a lokální data z fáze 1 a 2 se při načtení převedou automaticky. Soubor z novější verze aplikace se neotevře; aplikace nabídne kontrolu aktualizace.
+Schéma dokumentu je ve verzi **4**. Soubory a lokální data ze starších verzí se při načtení převedou automaticky. Verze 4 odebere hierarchické vazby, ve kterých byl projekt poduzlem, a po načtení oznámí, kolik vazeb a u kterých projektů odebrala. Soubor z novější verze aplikace se neotevře; aplikace nabídne kontrolu aktualizace.
 
 ## Spuštění
 
