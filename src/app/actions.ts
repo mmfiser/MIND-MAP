@@ -7,6 +7,8 @@ import { createNode } from '../model/factory';
 import { buildHierarchyIndex, childEdges, parentEdges } from '../model/graph';
 import { formatShort, formatWithWeekday, isValidYmd } from '../model/dates';
 import { dueBeforeStart } from '../model/deadline';
+import { activeBlockers, listNames } from '../model/blocking';
+import { newConflictMessage } from './linkActions';
 import * as H from '../model/hierarchy';
 import { nonWorkingReason, toLastWorkingDayOnOrBefore } from '../model/holidays';
 import { normalizeTag } from '../model/tags';
@@ -49,7 +51,7 @@ function freeSpot(d: DocData, pos: Position, type: NodeType): Position {
   return snapPos(p);
 }
 
-function run(op: (d: DocData) => OpResult | DocData, opts?: ApplyOptions): boolean {
+export function run(op: (d: DocData) => OpResult | DocData, opts?: ApplyOptions): boolean {
   const r = useDocStore.getState().apply(op, opts);
   if (!r.ok) {
     toast(r.reason, 'error');
@@ -58,7 +60,7 @@ function run(op: (d: DocData) => OpResult | DocData, opts?: ApplyOptions): boole
   return true;
 }
 
-function data(): DocData | null {
+export function data(): DocData | null {
   const d = useDocStore.getState().doc;
   return d ? { nodes: d.nodes, edges: d.edges } : null;
 }
@@ -225,9 +227,24 @@ export function setNodeType(id: string, type: NodeType): void {
   const d = data();
   const n = d?.nodes[id];
   if (!d || !n || n.type === type) return;
+  if (type === 'milestone' && childEdges(d, id).length) {
+    toast('Uzel má poduzly – milník nemůže mít poduzly. Nejdřív je přesuňte jinam.', 'error');
+    return;
+  }
   const patch: Partial<MapNode> = { type };
   if (type === 'project' && !n.color) patch.color = nextProjectColor(d);
-  run((x) => H.updateNode(x, id, patch));
+  if (type === 'milestone') {
+    patch.status = 'new';
+    patch.priority = 'medium';
+    patch.checklist = [];
+    if (n.checklist.length) toast('Checklist se u milníku nepoužívá – byl odebrán (Zpět ho vrátí).', 'info');
+  }
+  run((x) => {
+    const r = H.updateNode(x, id, patch);
+    if (!r.ok || type !== 'milestone' || !r.data.nodes[id]!.startDate) return r;
+    const { startDate: _s, ...rest } = r.data.nodes[id]!;
+    return { ok: true, data: { nodes: { ...r.data.nodes, [id]: rest }, edges: r.data.edges } };
+  });
 }
 
 export function commitPositions(positions: Record<string, Position>): void {
@@ -263,7 +280,20 @@ export function parentCandidates(
 // ---------- Fáze 2: stav, priorita, data, ikona, štítky, checklist, koš ----------
 
 export function setStatusOf(id: string, status: Status): void {
-  run((x) => H.setStatus(x, id, status));
+  const d = data();
+  const n = d?.nodes[id];
+  if (!d || !n) return;
+  if (status === 'done' && n.status !== 'done') {
+    const blockers = activeBlockers(d, id, useUiStore.getState().today);
+    if (blockers.length) toast(`Úkol má nedokončené blokující úkoly: ${listNames(blockers, 4)}.`, 'info');
+  }
+  const ok = run((x) => H.setStatus(x, id, status));
+  // Znovu otevřený uzel se znovu počítá do kolizí.
+  const after = data();
+  if (ok && after && (n.status === 'done' || n.status === 'cancelled') && status !== 'done' && status !== 'cancelled') {
+    const msg = newConflictMessage(d, after, [id]);
+    if (msg) toast(msg, 'info');
+  }
 }
 
 /** Zaškrtnutí na mapě / tlačítka Hotovo – Znovu otevřít (vrací stav Probíhá). */
@@ -301,9 +331,12 @@ export function setDateOf(id: string, field: 'startDate' | 'dueDate', value: str
   // Kontrola až po případném posunu – posun může konflikt vytvořit.
   const next = { startDate: field === 'startDate' ? v : n.startDate, dueDate: field === 'dueDate' ? v : n.dueDate };
   if (v && dueBeforeStart(next)) messages.push('Termín je dříve než začátek.');
-  if (messages.length) toast(messages.join(' '), 'info');
-  if (n[field] === v) return;
-  run((x) => {
+  if (n[field] === v) {
+    if (messages.length) toast(messages.join(' '), 'info');
+    return;
+  }
+  const before = data()!;
+  const ok = run((x) => {
     const r = H.updateNode(x, id, {});
     if (!r.ok) return r;
     const node = { ...r.data.nodes[id]! };
@@ -311,6 +344,12 @@ export function setDateOf(id: string, field: 'startDate' | 'dueDate', value: str
     else delete node[field];
     return { ok: true, data: { nodes: { ...r.data.nodes, [id]: node }, edges: r.data.edges } };
   });
+  const after = data();
+  if (ok && after && field === 'dueDate') {
+    const msg = newConflictMessage(before, after, [id]);
+    if (msg) messages.push(msg);
+  }
+  if (messages.length) toast(messages.join(' '), 'info');
 }
 
 export function setIconOf(id: string, icon: string | null): void {

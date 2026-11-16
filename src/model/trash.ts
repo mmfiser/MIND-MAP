@@ -6,6 +6,7 @@
 import { newId, nowIso } from './factory';
 import { buildHierarchyIndex, owningProject, parentEdges } from './graph';
 import { branchNodesToDelete, wouldCreateCycle } from './hierarchy';
+import { findDuplicate } from './links';
 import type { DocData, MapEdge, MapNode, OpResult } from './types';
 
 export interface TrashBatch {
@@ -115,13 +116,15 @@ export function restoreBatch(data: DocData, batchId: string): RestoreResult | { 
   const notices: string[] = [];
   let cur: DocData = { nodes, edges };
   for (const e of reactivated) {
+    // Mezitím vznikla stejná vazba – obnovená by byla duplicitní.
+    if (findDuplicate(cur, e.kind, e.source, e.target, e.id)) continue;
     if (wouldCreateCycle(cur, e.kind, e.source, e.target)) {
       const child = label(nodes[e.target]);
       const parent = label(nodes[e.source]);
       notices.push(
         e.kind === 'hierarchy'
           ? `Uzel ${child} ztratil rodiče ${parent} – vazba by vytvořila cyklus.`
-          : `Vazba ${parent} → ${child} nebyla obnovena – vytvořila by cyklus.`,
+          : `Závislost ${parent} → ${child} nebyla obnovena – úkoly by na sebe čekaly v kruhu.`,
       );
       continue;
     }

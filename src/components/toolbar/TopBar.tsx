@@ -3,10 +3,14 @@ import {
   FilePlus2,
   FolderOpen,
   FolderPlus,
+  FoldVertical,
   Grid3x3,
+  Highlighter,
+  Link2,
   ListPlus,
   ListTree,
   Lock,
+  Milestone,
   Moon,
   MoreHorizontal,
   Redo2,
@@ -16,17 +20,19 @@ import {
   Trash,
   Trash2,
   Undo2,
+  UnfoldVertical,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { listTrash } from '../../model/trash';
 import { useCallback, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { addChildTo, addSiblingTo, createProject, deleteWithConfirm } from '../../app/actions';
 import { openFromFile, saveToFile } from '../../app/fileSync';
+import { addMilestone, collapseAll, expandEverything, startLinkPick } from '../../app/linkActions';
 import { lock, updateSettings } from '../../app/session';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { hasFileSystemAccess } from '../../storage/fileIO';
 import { useDocStore } from '../../store/docStore';
-import { useUiStore } from '../../store/uiStore';
+import { useUiStore, writeFlag } from '../../store/uiStore';
 import { Menu, type MenuEntry } from '../common/Menu';
 
 const I = 19;
@@ -65,6 +71,8 @@ export function TopBar() {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const gridVisible = useUiStore((s) => s.gridVisible);
   const theme = useUiStore((s) => s.theme);
+  const highlightLinks = useUiStore((s) => s.highlightLinks);
+  const picking = useUiStore((s) => !!s.linkPick);
   const fileName = useUiStore((s) => s.fileName);
   const canUndo = useDocStore((s) => s.past.length > 0);
   const canRedo = useDocStore((s) => s.future.length > 0);
@@ -96,6 +104,21 @@ export function TopBar() {
       /* nevadí */
     }
   };
+  const toggleHighlight = () => {
+    const v = !ui().highlightLinks;
+    ui().set({ highlightLinks: v });
+    writeFlag('mapa-highlight-links', v);
+  };
+  const viewEntries: MenuEntry[] = [
+    { key: 'collapseAll', label: 'Sbalit vše na projekty', icon: <FoldVertical size={18} />, onSelect: collapseAll },
+    { key: 'expandAll', label: 'Rozbalit vše', icon: <UnfoldVertical size={18} />, onSelect: expandEverything },
+    {
+      key: 'highlight',
+      label: highlightLinks ? 'Zvýrazňovat vazby vybraného uzlu ✓' : 'Zvýrazňovat vazby vybraného uzlu',
+      icon: <Highlighter size={18} />,
+      onSelect: toggleHighlight,
+    },
+  ];
   const undo = () => useDocStore.getState().undo();
   const redo = () => useDocStore.getState().redo();
 
@@ -118,8 +141,11 @@ export function TopBar() {
   const moreEntries: MenuEntry[] = mobile
     ? [
         { key: 'sib', label: 'Sourozenec', icon: <ListPlus size={18} />, disabled: !selectedId, onSelect: () => addSiblingTo(selectedId) },
+        { key: 'ms', label: 'Milník', icon: <Milestone size={18} />, onSelect: () => addMilestone(selectedId) },
         { key: 'del', label: 'Smazat…', icon: <Trash2 size={18} />, danger: true, disabled: !selectedId, onSelect: () => void deleteWithConfirm(selectedId) },
         { key: 'redo', label: 'Znovu', icon: <Redo2 size={18} />, disabled: !canRedo, onSelect: redo },
+        'sep',
+        ...viewEntries,
         'sep',
         { key: 'open', label: 'Otevřít soubor', icon: <FolderOpen size={18} />, onSelect: () => void openFromFile() },
         ...(fsa ? [{ key: 'saveAs', label: 'Uložit jako…', icon: <FilePlus2 size={18} />, onSelect: () => void saveToFile(true) }] : []),
@@ -131,6 +157,8 @@ export function TopBar() {
         { key: 'lock', label: 'Zamknout', icon: <Lock size={18} />, onSelect: () => void lock() },
       ]
     : [
+        ...viewEntries,
+        'sep',
         { key: 'settings', label: 'Nastavení', icon: <Settings size={18} />, onSelect: () => ui().set({ settingsOpen: true }) },
         { key: 'lock', label: 'Zamknout', icon: <Lock size={18} />, onSelect: () => void lock() },
       ];
@@ -146,6 +174,7 @@ export function TopBar() {
         <Tb icon={<ListTree size={I} />} label="Rejstřík" onClick={toggleSidebar} active={sidebarOpen} />
         <Tb icon={<FolderPlus size={I} />} label="Nový projekt" onClick={() => createProject()} />
         <Tb icon={<CornerDownRight size={I} />} label="Podúkol" onClick={() => addChildTo(selectedId)} disabled={!selectedId} />
+        <Tb icon={<Link2 size={I} />} label="Propojit" title="Propojit vybraný uzel s jiným" onClick={() => startLinkPick(selectedId)} disabled={!selectedId} active={picking} />
         <Tb icon={<Undo2 size={I} />} label="Zpět" onClick={undo} disabled={!canUndo} />
         <div className="spacer" />
         {saveBtn}
@@ -167,6 +196,8 @@ export function TopBar() {
       <Tb icon={<FolderPlus size={I} />} label="Nový projekt" onClick={() => createProject()} />
       <Tb icon={<CornerDownRight size={I} />} label="Podúkol" title="Podúkol (Tab)" onClick={() => addChildTo(selectedId)} disabled={!selectedId} />
       <Tb icon={<ListPlus size={I} />} label="Sourozenec" title="Sourozenec (Enter)" onClick={() => addSiblingTo(selectedId)} disabled={!selectedId} />
+      <Tb icon={<Milestone size={I} />} label="Milník" title="Nový milník (pod vybraný uzel, jinak uprostřed plochy)" onClick={() => addMilestone(selectedId)} />
+      <Tb icon={<Link2 size={I} />} label="Propojit" title="Propojit vybraný uzel s jiným (nebo táhněte z konektoru na okraji uzlu)" onClick={() => startLinkPick(selectedId)} disabled={!selectedId} active={picking} />
       <Tb icon={<Trash2 size={I} />} label="Smazat" title="Smazat (Delete)" onClick={() => void deleteWithConfirm(selectedId)} disabled={!selectedId} />
       <div className="sep" />
       <Tb icon={<Undo2 size={I} />} label="Zpět" title="Zpět (Ctrl+Z)" onClick={undo} disabled={!canUndo} />

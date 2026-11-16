@@ -19,10 +19,16 @@ import {
   type TrashInfo,
 } from './types';
 
+export const NEWER_VERSION_MESSAGE =
+  'Soubor je z novější verze aplikace. Otevřete aplikaci s připojením k internetu, aby se aktualizovala, a zkuste to znovu.';
+
 export class MigrationError extends Error {
-  constructor(message: string) {
+  /** `newer` = data z novější verze aplikace (nabídnout kontrolu aktualizace). */
+  readonly code: 'newer' | 'invalid';
+  constructor(message: string, code: 'newer' | 'invalid' = 'invalid') {
     super(message);
     this.name = 'MigrationError';
+    this.code = code;
   }
 }
 
@@ -46,6 +52,12 @@ export const MIGRATIONS: Record<number, Migration> = {
     }
     return { ...doc, nodes: out };
   },
+  /**
+   * 2 → 3 (fáze 3): milníky, závislosti, souvislosti, sbalování. Nová pole
+   * nepřibyla; úklid (milník bez stavu/checklistu, vazby na sebe, duplicity,
+   * poduzly milníku, cykly) dělá normalizace, která běží po každé migraci.
+   */
+  2: (doc) => doc,
 };
 
 const isObj = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -62,9 +74,7 @@ export function runMigrations(
     throw new MigrationError('Data nemají platnou verzi schématu.');
   }
   if (version > target) {
-    throw new MigrationError(
-      `Data pocházejí z novější verze aplikace (schéma ${version}, tato aplikace zná ${target}). Aktualizujte aplikaci (obnovte stránku).`,
-    );
+    throw new MigrationError(NEWER_VERSION_MESSAGE, 'newer');
   }
   while (version < target) {
     const m = migrations[version];
@@ -136,6 +146,13 @@ function normalizeNode(id: string, r: Raw): MapNode {
     node.trash = normalizeTrash(id, r.trash);
   }
   if (r.positionLocked === true) node.positionLocked = true;
+  if (type === 'milestone') {
+    // Milník nemá stav, prioritu, checklist ani začátek.
+    node.status = 'new';
+    node.priority = 'medium';
+    node.checklist = [];
+    delete node.startDate;
+  }
   return node;
 }
 
@@ -155,24 +172,63 @@ export function normalizeDocument(raw: Raw): MapDocument {
       if (isObj(r)) nodes[id] = normalizeNode(id, r);
     }
   }
-  const edges: Record<string, MapEdge> = {};
+  const candidates: MapEdge[] = [];
   if (isObj(raw.edges)) {
     for (const [id, r] of Object.entries(raw.edges)) {
       if (!isObj(r)) continue;
       const source = str(r.source);
       const target = str(r.target);
       if (!nodes[source] || !nodes[target] || source === target) continue;
-      edges[id] = {
+      let kind = oneOf(r.kind, EDGE_KINDS, 'related');
+      // Milník nemůže mít poduzly – takovou vazbu zachovej jako souvislost.
+      if (kind === 'hierarchy' && nodes[source]!.type === 'milestone') kind = 'related';
+      candidates.push({
         id,
-        kind: oneOf(r.kind, EDGE_KINDS, 'related'),
+        kind,
         source,
         target,
         order: num(r.order),
         createdAt: str(r.createdAt, new Date(0).toISOString()),
-      };
+      });
     }
   }
-  return { meta, nodes, edges };
+  return { meta, nodes, edges: cleanEdges(candidates) };
+}
+
+/**
+ * Zahodí duplicitní vazby (u souvislosti v obou směrech) a vazby, které by
+ * vytvořily cyklus v hierarchii nebo v závislostech. Rozhoduje stáří vazby
+ * (starší vyhrává), takže výsledek je deterministický.
+ */
+function cleanEdges(list: MapEdge[]): Record<string, MapEdge> {
+  list.sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1));
+  const edges: Record<string, MapEdge> = {};
+  const seen = new Set<string>();
+  const out: Record<'hierarchy' | 'dependency', Map<string, string[]>> = { hierarchy: new Map(), dependency: new Map() };
+  const reaches = (adj: Map<string, string[]>, from: string, to: string): boolean => {
+    const stack = [from];
+    const visited = new Set([from]);
+    while (stack.length) {
+      const cur = stack.pop()!;
+      if (cur === to) return true;
+      for (const n of adj.get(cur) ?? []) if (!visited.has(n)) (visited.add(n), stack.push(n));
+    }
+    return false;
+  };
+  for (const e of list) {
+    const key = e.kind === 'related' ? `r:${[e.source, e.target].sort().join('|')}` : `${e.kind}:${e.source}|${e.target}`;
+    if (seen.has(key)) continue;
+    if (e.kind !== 'related') {
+      const adj = out[e.kind];
+      if (reaches(adj, e.target, e.source)) continue;
+      let l = adj.get(e.source);
+      if (!l) adj.set(e.source, (l = []));
+      l.push(e.target);
+    }
+    seen.add(key);
+    edges[e.id] = e;
+  }
+  return edges;
 }
 
 /** Načte libovolná (dešifrovaná) data: migrace + normalizace. */

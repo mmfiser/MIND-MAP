@@ -19,6 +19,7 @@ import {
 } from '../crypto/envelope';
 import { deriveWithPassword, keyForSalt, rememberKey } from '../crypto/keySession';
 import { MigrationError, migrateDocument } from '../model/migrations';
+import { checkForUpdateNow } from './updates';
 import { decideOnOpen, nextRevision } from '../model/sync';
 import type { MapDocument } from '../model/types';
 import {
@@ -141,6 +142,18 @@ export async function openFromFile(): Promise<void> {
     if (raw === null) return;
     fileDoc = migrateDocument(raw);
   } catch (e) {
+    if (e instanceof MigrationError && e.code === 'newer') {
+      const r = await choose({
+        title: 'Soubor nelze otevřít',
+        message: e.message,
+        options: [
+          { value: 'close', label: 'Zavřít' },
+          { value: 'update', label: 'Zkontrolovat aktualizaci', variant: 'primary' },
+        ],
+      });
+      if (r === 'update') void checkForUpdateNow();
+      return;
+    }
     if (e instanceof MigrationError || e instanceof DecryptError) {
       return showError('Soubor nelze otevřít', e.message);
     }

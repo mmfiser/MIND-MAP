@@ -1,8 +1,10 @@
 import {
   Background,
   BackgroundVariant,
+  MarkerType,
   ReactFlow,
   applyNodeChanges,
+  type EdgeMouseHandler,
   useReactFlow,
   type Edge,
   type NodeChange,
@@ -12,9 +14,13 @@ import {
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { GRID, canvasApi, commitPositions, createProject } from '../../app/actions';
+import { blockedText, handlePickTarget } from '../../app/linkActions';
+import { blockersIndex } from '../../model/blocking';
+import { describeConflict, findDateConflicts, type ConflictReport } from '../../model/conflicts';
+import { computeVisibility, routeEdges, type VisibilityInfo } from '../../model/visibility';
 import { getSettings, updateSettings } from '../../app/session';
 import { formatShort } from '../../model/dates';
-import { deadlineState, dueBeforeStart } from '../../model/deadline';
+import { deadlineState } from '../../model/deadline';
 import { buildHierarchyIndex, owningProject, type HierarchyIndex } from '../../model/graph';
 import { checklistProgress, projectProgress, subtaskProgress } from '../../model/progress';
 import { colorHex, contrastText } from '../../model/labels';
@@ -23,6 +29,8 @@ import { isMobileNow } from '../../hooks/useIsMobile';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import { FloatingEdge, type FloatingEdgeType } from './FloatingEdge';
+import { LinkDragLayer } from './LinkDrag';
+import { EdgeMenu, LinkPickBar, LinkTypeMenu } from './LinkMenus';
 import { MapNodeView, type FlowNode, type FlowNodeData } from './MapNodeView';
 import { ZoomControls } from './ZoomControls';
 
@@ -32,6 +40,9 @@ const SNAP: [number, number] = [GRID, GRID];
 const LONG_PRESS_MS = 550;
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const coarsePointer = () => window.matchMedia('(pointer: coarse)').matches;
+/** Délka animace sbalení / rozbalení (prolnutí). */
+const FADE_MS = 160;
 
 const MAX_TAGS_ON_NODE = 2;
 
@@ -39,12 +50,20 @@ interface CacheEntry {
   /** Podpis dat uzlu – při shodě (a stejné pozici/výběru) se uzel nepřekresluje. */
   sig: string;
   selected: boolean;
+  className: string;
   node: FlowNode;
 }
 
+interface Derived {
+  vis: VisibilityInfo;
+  conflicts: ConflictReport;
+  blockers: Map<string, MapNode[]>;
+}
+
 /** Odvozená data uzlu pro zobrazení (procenta, termíny, počty…). */
-function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string): FlowNodeData {
+function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string, x: Derived): FlowNodeData {
   const fill = n.type === 'project' ? colorHex(n.color) : undefined;
+  const blockers = n.type !== 'project' ? x.blockers.get(n.id) : undefined;
   const data: FlowNodeData = {
     title: n.title,
     kind: n.type,
@@ -56,16 +75,24 @@ function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string)
     status: n.status,
     priority: n.priority,
     icon: n.icon,
-    dueState: deadlineState(n.dueDate, today, n.status),
+    dueState: deadlineState(n.dueDate, today, n.status, n.type),
     tags: n.tags.slice(0, MAX_TAGS_ON_NODE),
     moreTags: Math.max(0, n.tags.length - MAX_TAGS_ON_NODE),
-    dateConflict: dueBeforeStart(n),
+    conflicts: (x.conflicts.byNode.get(n.id) ?? []).map((c) => describeConflict(d, c, n.id, today)),
+    collapsible: x.vis.hasChildren.has(n.id),
+    collapsed: n.collapsed && x.vis.hasChildren.has(n.id),
+    hiddenCount: x.vis.hiddenCount.get(n.id) ?? 0,
   };
+  if (blockers?.length) data.blocked = blockedText(blockers);
+  if (n.type === 'milestone') {
+    const p = owningProject(d, n.id, index);
+    data.accent = p ? colorHex(p.color) : undefined;
+  }
   if (n.dueDate) data.due = formatShort(n.dueDate, today);
   if (n.type === 'project') {
     const p = projectProgress(d, n.id, index);
     data.progress = { percent: p.percent, open: p.open, done: p.done };
-  } else {
+  } else if (n.type === 'task') {
     const sp = subtaskProgress(d, n.id, index);
     if (sp) data.subtasks = { done: sp.done, total: sp.total };
   }
@@ -82,6 +109,8 @@ export function Canvas() {
   const focusRequest = useUiStore((s) => s.focusRequest);
   const fitRequest = useUiStore((s) => s.fitRequest);
   const today = useUiStore((s) => s.today);
+  const highlightLinks = useUiStore((s) => s.highlightLinks);
+  const picking = useUiStore((s) => !!s.linkPick);
   const rf = useReactFlow<FlowNode, Edge>();
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -90,26 +119,79 @@ export function Canvas() {
 
   const index = useMemo(() => (doc ? buildHierarchyIndex(doc) : null), [doc?.nodes, doc?.edges]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Odvozené informace – přepočet jen při změně dat (ne při posunu plochy).
+  const vis = useMemo(() => (doc && index ? computeVisibility(doc, index) : null), [index]); // eslint-disable-line react-hooks/exhaustive-deps
+  const routed = useMemo(() => (doc && vis ? routeEdges(doc, vis) : []), [vis]); // eslint-disable-line react-hooks/exhaustive-deps
+  const conflicts = useMemo(() => (doc ? findDateConflicts(doc) : null), [index]); // eslint-disable-line react-hooks/exhaustive-deps
+  const blockers = useMemo(() => (doc ? blockersIndex(doc, today) : null), [index, today]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Zvýraznění vazeb vybraného uzlu: sousedé (po vykreslených čarách) + uzel sám.
+  const focusSet = useMemo(() => {
+    if (!highlightLinks || !selectedId || !vis?.visible.has(selectedId)) return null;
+    const set = new Set<string>([selectedId]);
+    for (const r of routed) {
+      if (r.source === selectedId) set.add(r.target);
+      else if (r.target === selectedId) set.add(r.source);
+    }
+    return set;
+  }, [highlightLinks, selectedId, vis, routed]);
+
+  // Animace sbalení / rozbalení: nově viditelné uzly se prolnou, skryté chvíli doznívají.
+  const prevVisible = useRef<Set<string> | null>(null);
+  const appearUntil = useRef(new Map<string, number>());
+  const vanishUntil = useRef(new Map<string, number>());
+  const [animTick, setAnimTick] = useState(0);
+
   // Synchronizace dokument → uzly React Flow. Uzel si drží identitu, dokud se
-  // nezmění jeho zobrazená data, výběr nebo pozice (memo komponenty pak nepřekresluje).
+  // nezmění jeho zobrazená data, výběr, třída nebo pozice (memo komponenty pak nepřekresluje).
   useEffect(() => {
-    if (!doc || !index) {
+    if (!doc || !index || !vis || !conflicts || !blockers) {
       setNodes([]);
       return;
     }
+    const now = performance.now();
+    const prevVis = prevVisible.current;
+    if (prevVis && prevVis !== vis.visible && !reducedMotion()) {
+      for (const id of vis.visible) if (!prevVis.has(id) && doc.nodes[id]) appearUntil.current.set(id, now + 2 * FADE_MS);
+      for (const id of prevVis) {
+        const n = doc.nodes[id];
+        if (n && !n.deletedAt && !vis.visible.has(id)) vanishUntil.current.set(id, now + FADE_MS);
+      }
+    }
+    prevVisible.current = vis.visible;
+    let nextWake = 0;
+    for (const m of [appearUntil.current, vanishUntil.current]) {
+      for (const [id, until] of m) {
+        if (until <= now) m.delete(id);
+        else nextWake = Math.max(nextWake, until);
+      }
+    }
+    const derived: Derived = { vis, conflicts, blockers };
     setNodes((prevNodes) => {
       const prevById = new Map(prevNodes.map((n) => [n.id, n]));
       const nextCache = new Map<string, CacheEntry>();
       const out: FlowNode[] = [];
       for (const n of Object.values(doc.nodes)) {
         if (n.deletedAt) continue;
-        const data = buildData(n, doc, index, today);
+        const shown = vis.visible.has(n.id);
+        const vanishing = !shown && vanishUntil.current.has(n.id);
+        if (!shown && !vanishing) continue;
+        const data = buildData(n, doc, index, today, derived);
         const sig = JSON.stringify(data);
         const selected = n.id === selectedId;
+        const className = [
+          focusSet && !focusSet.has(n.id) ? 'mm-dim' : '',
+          appearUntil.current.has(n.id) ? 'mm-appear' : '',
+          vanishing ? 'mm-vanish' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
         const c = cache.current.get(n.id);
         const prev = prevById.get(n.id);
         let node: FlowNode;
-        if (c && prev && c.sig === sig && c.selected === selected && prev.position === n.position) {
+        // c.node === prev: mezipaměť musí odpovídat skutečně vykreslenému uzlu
+        // (aktualizační funkce může React zavolat dvakrát).
+        if (c && prev && c.node === prev && c.sig === sig && c.selected === selected && c.className === className && prev.position === n.position) {
           node = prev;
         } else {
           node = {
@@ -117,48 +199,72 @@ export function Canvas() {
             type: 'mm',
             position: n.position,
             selected,
-            draggable: !n.positionLocked,
+            draggable: !n.positionLocked && !vanishing,
+            className,
             data: c && c.sig === sig ? c.node.data : data,
             ...(prev?.measured ? { measured: prev.measured } : {}),
           };
         }
-        nextCache.set(n.id, { sig, selected, node });
+        nextCache.set(n.id, { sig, selected, className, node });
         out.push(node);
       }
       cache.current = nextCache;
       return out;
     });
-  }, [doc, index, selectedId, today]);
+    if (nextWake) {
+      const t = setTimeout(() => setAnimTick((x) => x + 1), nextWake - now + 10);
+      return () => clearTimeout(t);
+    }
+  }, [doc, index, vis, conflicts, blockers, selectedId, today, focusSet, animTick]);
 
   const edges = useMemo<FloatingEdgeType[]>(() => {
-    if (!doc || !index) return [];
+    if (!doc || !index || !conflicts) return [];
     const colorOf = new Map<string, string>();
-    const out: FloatingEdgeType[] = [];
-    for (const list of index.children.values()) {
-      for (const e of list) {
-        let color = colorOf.get(e.source);
-        if (!color) {
-          const p = owningProject(doc, e.source, index);
-          color = p ? colorHex(p.color) : 'var(--border-strong)';
-          colorOf.set(e.source, color);
-        }
-        out.push({
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          type: 'floating',
-          // Skryté handly zůstávají kvůli React Flow; místo uchycení počítá FloatingEdge.
-          sourceHandle: 'r',
-          targetHandle: 'l',
-          data: { kind: e.kind },
-          selectable: false,
-          focusable: false,
-          style: { stroke: color, strokeWidth: 2.25 },
-        });
+    const projectColor = (id: string) => {
+      let color = colorOf.get(id);
+      if (!color) {
+        const p = owningProject(doc, id, index);
+        color = p ? colorHex(p.color) : 'var(--border-strong)';
+        colorOf.set(id, color);
       }
-    }
-    return out;
-  }, [doc, index]);
+      return color;
+    };
+    const interactionWidth = coarsePointer() ? 32 : 18;
+    const sel = focusSet ? selectedId : null;
+    return routed.map((r): FloatingEdgeType => {
+      const first = doc.edges[r.edgeIds[0]!]!;
+      const conflict = r.edgeIds.some((id) => conflicts.edgeIds.has(id));
+      // Barva podle projektu rodiče / blokujícího uzlu; souvislost neutrálně.
+      const color = r.kind === 'related' ? 'var(--edge-related)' : projectColor(first.source);
+      const touches = !!sel && (r.source === sel || r.target === sel);
+      return {
+        id: r.id,
+        source: r.source,
+        target: r.target,
+        type: 'floating',
+        sourceHandle: 'r',
+        targetHandle: 'l',
+        selectable: false,
+        focusable: false,
+        interactionWidth,
+        zIndex: touches ? 1 : 0,
+        markerEnd:
+          r.kind === 'dependency'
+            ? { type: MarkerType.ArrowClosed, color: conflict ? 'var(--warn)' : color, width: 16, height: 16 }
+            : undefined,
+        data: {
+          kind: r.kind,
+          color,
+          bend: r.bend,
+          edgeIds: r.edgeIds,
+          redirected: r.redirected,
+          conflict,
+          dim: !!sel && !touches,
+          focus: touches,
+        },
+      };
+    });
+  }, [doc, index, routed, conflicts, focusSet, selectedId]);
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
     const relevant = changes.filter((c) => c.type === 'position' || c.type === 'dimensions');
@@ -171,7 +277,8 @@ export function Canvas() {
     commitPositions(positions);
   }, []);
 
-  const onNodeClick: NodeMouseHandler<FlowNode> = useCallback((_e, node) => {
+  const onNodeClick: NodeMouseHandler<FlowNode> = useCallback((e, node) => {
+    if (handlePickTarget(node.id, e.clientX, e.clientY)) return;
     const ui = useUiStore.getState();
     ui.select(node.id, true);
     if (isMobileNow()) ui.focusNode(node.id);
@@ -185,7 +292,19 @@ export function Canvas() {
   const onPaneClick = useCallback(() => {
     const ui = useUiStore.getState();
     if (ui.contextMenu) ui.set({ contextMenu: null });
-    else ui.select(null);
+    else if (ui.selectedEdge) ui.set({ selectedEdge: null, edgeMenu: null });
+    else if (!ui.linkPick) ui.select(null);
+  }, []);
+
+  const onEdgeClick: EdgeMouseHandler<Edge> = useCallback((e, edge) => {
+    const ui = useUiStore.getState();
+    const data = edge.data as FloatingEdgeType['data'];
+    if (ui.linkPick || !data) return;
+    ui.set({
+      selectedEdge: edge.id,
+      contextMenu: null,
+      edgeMenu: { x: e.clientX, y: e.clientY, routedId: edge.id, edgeIds: data.edgeIds },
+    });
   }, []);
 
   // --- kontextová nabídka (pravé tlačítko / dlouhé podržení) ---
@@ -301,7 +420,7 @@ export function Canvas() {
 
   return (
     <div
-      className="canvas-wrap"
+      className={`canvas-wrap${picking ? ' picking' : ''}`}
       ref={wrapRef}
       onDoubleClick={onDoubleClick}
       onPointerDown={onPointerDown}
@@ -318,6 +437,7 @@ export function Canvas() {
         onNodeDragStart={cancelPress}
         onNodeDragStop={onNodeDragStop}
         onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
         onNodeDoubleClick={onNodeDoubleClick}
         onNodeContextMenu={onNodeContextMenu}
         onPaneClick={onPaneClick}
@@ -346,6 +466,10 @@ export function Canvas() {
         {gridVisible && <Background variant={BackgroundVariant.Dots} gap={20} size={1.6} color="var(--grid-dot)" />}
         <ZoomControls />
       </ReactFlow>
+      <LinkPickBar />
+      <LinkDragLayer />
+      <EdgeMenu />
+      <LinkTypeMenu />
     </div>
   );
 }

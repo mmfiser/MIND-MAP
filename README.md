@@ -58,8 +58,51 @@ Aktuální stav: **fáze 2**.
 - **Trvalé smazání** a **Vysypat koš** odstraní uzly i všechny jejich vazby, takže v souboru nezůstanou osiřelé vazby.
 - Smazání i obnovení jde vrátit tlačítky Zpět/Znovu.
 
+## Vazby, milníky a sbalování (fáze 3)
+
+### Typy vazeb
+| Typ | Význam | Vzhled |
+| --- | --- | --- |
+| Hierarchie | rodič → poduzel (víc rodičů = sdílený uzel), cykly zakázané | plná čára v barvě projektu rodiče |
+| Závislost | A blokuje B, cykly zakázané | čárkovaná čára se šipkou u B, v barvě projektu blokujícího uzlu |
+| Souvislost | volný odkaz bez logiky, cykly povolené | tečkovaná šedá čára |
+
+- Všechny typy používají plovoucí vazby (střed nejbližší hrany). Souběžné vazby mezi stejnou dvojicí uzlů se odsadí do oblouku.
+- Vazba na sebe a duplicitní vazba stejného typu (u souvislosti v obou směrech) nejsou dovolené. Pokus o cyklus aplikace odmítne a vypíše uzly v cyklu.
+- **Vytvoření myší:** po najetí na uzel se ukážou konektory na čtyřech hranách; tažení na jiný uzel otevře nabídku Závislost / Souvislost / Přidat jako poduzel.
+- **Vytvoření na telefonu:** tlačítko **Propojit** (horní lišta, kontextová nabídka, detail) → klepnutí na cílový uzel → stejná nabídka.
+- **Úprava:** klik na čáru vazbu zvýrazní a otevře nabídku (otočit směr, změnit typ, změnit zdroj/cíl, odstranit, u hierarchie odpojit od rodiče). Konec vybrané vazby jde myší přetáhnout na jiný uzel. Odstranění vazby nikdy nemaže uzly, vše jde vrátit tlačítkem Zpět.
+- Po výběru uzlu se zvýrazní jeho vazby a propojené uzly, ostatní se ztlumí (vypínač v menu „⋯“). Detail uzlu má sekci **Vazby** (Nadřazené, Podřízené, Blokuje, Je blokován, Souvisí).
+
+### Blokující závislosti
+- Úkol nebo milník, který čeká na nedokončený uzel, má na mapě **zámek**; tooltip / klepnutí vypíše, na čem čeká. Stav se automaticky nemění.
+- Označení blokovaného úkolu jako Hotovo projde, jen s upozorněním.
+- Milník blokuje, dokud jeho datum nenastalo (v den milníku už ne, bez data neblokuje).
+
+### Milníky
+- Tlačítko **Milník** v horní liště (pod vybraný projekt/úkol, bez výběru doprostřed plochy) a v kontextové nabídce.
+- Zubaté okraje v barvě projektu. Obsah: název, datum, ikona, štítky, poznámky, vazby. Nemá stav, prioritu, checklist ani poduzly.
+- Nezapočítává se do procent ani počtu úkolů projektu.
+- Datum se posouvá z víkendu/svátku stejně jako termíny; „blíží se“ a „dnes“ jako u termínů, po datu neutrálně šedě s ✓.
+
+### Sbalování větví
+- Tlačítko na uzlu (pravý dolní roh), **mezerník**, kontextová nabídka, v rejstříku nabídka položky („Sbalit na mapě“). Šipka v rejstříku dál rozbaluje jen strom rejstříku.
+- Sbalený uzel ukazuje počet skrytých uzlů („+12“). Menu „⋯“: **Sbalit vše na projekty**, **Rozbalit vše**.
+- Uzel je skrytý, jen když žádná jeho cesta ke kořeni nevede přes samé rozbalené předky (sdílený uzel s jedním rozbaleným rodičem zůstává vidět).
+- Vazba do skryté větve se vykreslí poloprůhledně do nejbližšího viditelného předka; víc takových vazeb mezi stejnou dvojicí se sloučí do jedné čáry s číslem (klepnutí ukáže seznam a umí skrytý uzel zobrazit).
+- Výběr skrytého uzlu (z rejstříku, z detailu, ze seznamu vazeb) jeho předky rozbalí.
+
+### Kolize termínů
+- **Závislost:** blokovaný uzel má termín dříve nebo ve stejný den jako blokující (u milníku jeho datum).
+- **Hierarchie:** poduzel má termín později než nadřazený úkol / deadline projektu (sdílený uzel vůči každému rodiči).
+- Termín dříve než začátek (z fáze 2) zůstává.
+- Uzly s kolizí mají ⚠ s vypsanými důvody, dotčená vazba je oranžová. Nová kolize při změně termínu nebo vazby se oznámí. Hotové, zrušené a smazané uzly se nepočítají.
+
+### Koš a vazby
+Závislosti a souvislosti smazaného uzlu zůstanou neaktivní a obnovení je vrátí (s kontrolou cyklů). Trvalé smazání je odstraní.
+
 ### Verze dat
-Schéma dokumentu je ve verzi **2**. Soubory a lokální data z fáze 1 (verze 1) se při načtení převedou automaticky.
+Schéma dokumentu je ve verzi **3**. Soubory a lokální data z fáze 1 a 2 se při načtení převedou automaticky. Soubor z novější verze aplikace se neotevře; aplikace nabídne kontrolu aktualizace.
 
 ## Spuštění
 
@@ -149,7 +192,7 @@ Na notebooku se před přepsáním souboru (Uložit) zkontroluje, zda ho mezití
 ## Struktura
 
 ```
-src/model/       čisté funkce: typy, hierarchie (cykly, rodiče, přesuny, mazání), migrace, verze
+src/model/       čisté funkce: typy, hierarchie, vazby, viditelnost (sbalení), kolize termínů, koš, migrace, verze
 src/crypto/      obálka AES-GCM + PBKDF2, klíče sezení
 src/storage/     IndexedDB (Dexie), šifrovaný trezor, autosave, soubory (FSA / share / download)
 src/store/       Zustand – dokument + Zpět/Znovu, stav UI
@@ -166,6 +209,7 @@ tests/           Vitest – hierarchie, šifrování, migrace, rozhodování o v
 | Enter | nový sourozenec |
 | Delete | smazat (s potvrzením) |
 | F | vystředit vybraný |
+| Mezerník | sbalit / rozbalit větev vybraného uzlu |
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | zpět / znovu |
 | Ctrl+S / Ctrl+Shift+S | uložit / uložit jako |
-| Esc | zrušit výběr, zavřít nabídku či dialog |
+| Esc | zrušit výběr, režim Propojit, zavřít nabídku či dialog |

@@ -5,17 +5,21 @@
  *  - termín uplynul → overdue (červená, bez pulzování)
  *  - dnes je termín → today (červená + jemné pulzování)
  *  - do termínu zbývá 1–3 pracovní dny v intervalu (dnes, termín] → soon (oranžová)
+ *  - milník po svém datu → past (neutrálně šedá s ✓, nikdy červeně)
  */
 import { isValidYmd, type Ymd } from './dates';
 import { workingDaysBetween } from './holidays';
-import type { Status } from './types';
+import type { NodeType, Status } from './types';
 
-export type DeadlineState = 'none' | 'soon' | 'today' | 'overdue';
+export type DeadlineState = 'none' | 'soon' | 'today' | 'overdue' | 'past';
 
 export const SOON_WORKING_DAYS = 3;
 
-export function deadlineState(due: Ymd | undefined, today: Ymd, status: Status): DeadlineState {
-  if (!due || !isValidYmd(due) || status === 'done' || status === 'cancelled') return 'none';
+export function deadlineState(due: Ymd | undefined, today: Ymd, status: Status, type: NodeType = 'task'): DeadlineState {
+  if (!due || !isValidYmd(due)) return 'none';
+  if (type === 'milestone') {
+    if (due < today) return 'past';
+  } else if (status === 'done' || status === 'cancelled') return 'none';
   if (due < today) return 'overdue';
   if (due === today) return 'today';
   const wd = workingDaysBetween(today, due);

@@ -89,7 +89,7 @@ export function IconPicker({ node }: { node: MapNode }) {
   const groups = useMemo(() => filterIconGroups(query), [query]);
   return (
     <div className="field">
-      <span>{node.type === 'project' ? 'Ikona projektu' : 'Ikona úkolu'}</span>
+      <span>{node.type === 'project' ? 'Ikona projektu' : node.type === 'milestone' ? 'Ikona milníku' : 'Ikona úkolu'}</span>
       <div className="icon-current">
         <button
           className="btn small"

@@ -110,16 +110,31 @@ function bezierPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Poi
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-/** Kompletní geometrie vazby mezi dvěma obdélníky. */
-export function floatingEdgeGeometry(source: Rect, target: Rect, curvature = 0.25): EdgeGeometry {
+/**
+ * Kompletní geometrie vazby mezi dvěma obdélníky.
+ * `bend` – kolmé odsazení středu křivky (px, kladné = vlevo ve směru source → target);
+ * používá se pro souběžné vazby mezi stejnou dvojicí uzlů.
+ */
+export function floatingEdgeGeometry(source: Rect, target: Rect, curvature = 0.25, bend = 0): EdgeGeometry {
   const sc = center(source);
   const tc = center(target);
   const sourceSide = closestSide(source, tc);
   const targetSide = closestSide(target, sc);
   const s = sideAnchor(source, sourceSide);
   const t = sideAnchor(target, targetSide);
-  const c1 = controlPoint(s, sourceSide, t, curvature);
-  const c2 = controlPoint(t, targetSide, s, curvature);
+  let c1 = controlPoint(s, sourceSide, t, curvature);
+  let c2 = controlPoint(t, targetSide, s, curvature);
+  if (bend) {
+    const dx = t.x - s.x;
+    const dy = t.y - s.y;
+    const len = Math.hypot(dx, dy) || 1;
+    // Levá normála; u kubického bezieru se střed posune o 3/4 posunu kontrolních bodů.
+    const k = bend / 0.75;
+    const nx = (dy / len) * k;
+    const ny = (-dx / len) * k;
+    c1 = { x: c1.x + nx, y: c1.y + ny };
+    c2 = { x: c2.x + nx, y: c2.y + ny };
+  }
   const path = `M${r2(s.x)},${r2(s.y)} C${r2(c1.x)},${r2(c1.y)} ${r2(c2.x)},${r2(c2.y)} ${r2(t.x)},${r2(t.y)}`;
   return { sourceSide, targetSide, source: s, target: t, c1, c2, path, mid: bezierPoint(s, c1, c2, t, 0.5) };
 }

@@ -1,13 +1,28 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
-import { Ban, CalendarClock, Check, Link2, ListChecks, ListTree, StickyNote, TriangleAlert } from 'lucide-react';
+import {
+  Ban,
+  CalendarCheck,
+  CalendarClock,
+  Check,
+  Link2,
+  ListChecks,
+  ListTree,
+  Lock,
+  Milestone,
+  Minus,
+  StickyNote,
+  TriangleAlert,
+} from 'lucide-react';
 import { memo, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
 import { toggleDone } from '../../app/actions';
+import { toggleCollapse } from '../../app/linkActions';
 import { toast } from '../../store/uiStore';
 import type { DeadlineState } from '../../model/deadline';
 import { plural } from '../../model/progress';
 import type { NodeType, Priority, Status } from '../../model/types';
 import { projectIcon } from '../common/projectIcons';
 import { PRIORITY_META, STATUS_META } from '../common/statusMeta';
+import { startLinkDrag } from './LinkDrag';
 
 export interface FlowNodeData extends Record<string, unknown> {
   title: string;
@@ -15,6 +30,8 @@ export interface FlowNodeData extends Record<string, unknown> {
   /** Barva výplně projektu (hex). */
   fill?: string;
   textColor?: string;
+  /** Milník: barva projektu, do kterého patří. */
+  accent?: string;
   shared: boolean;
   borderColor?: string;
   hasNotes: boolean;
@@ -31,19 +48,25 @@ export interface FlowNodeData extends Record<string, unknown> {
   checklist?: { done: number; total: number };
   tags: string[];
   moreTags: number;
-  /** Termín je dříve než začátek. */
-  dateConflict: boolean;
+  /** Důvody ⚠ (termín před začátkem, kolize termínů). */
+  conflicts: string[];
+  /** Zámek: na čem uzel čeká (jen úkoly a milníky). */
+  blocked?: string;
+  /** Má poduzly v hierarchii. */
+  collapsible: boolean;
+  collapsed: boolean;
+  /** Počet uzlů skrytých sbalením. */
+  hiddenCount: number;
 }
 
 export type FlowNode = Node<FlowNodeData, 'mm'>;
 
 const stop = (e: PointerEvent | MouseEvent) => e.stopPropagation();
 
-function ConflictBadge({ kind }: { kind: NodeType }) {
-  const text = kind === 'project' ? 'Deadline je dříve než datum zahájení.' : 'Termín dokončení je dříve než začátek.';
+function InfoBadge({ className, text, children }: { className: string; text: string; children: React.ReactNode }) {
   return (
     <button
-      className="chip conflict nodrag nopan"
+      className={`chip ${className} nodrag nopan`}
       title={text}
       aria-label={text}
       onPointerDown={stop}
@@ -53,31 +76,83 @@ function ConflictBadge({ kind }: { kind: NodeType }) {
         toast(text, 'info');
       }}
     >
-      <TriangleAlert size={12} />
+      {children}
     </button>
   );
 }
 
-function DueBadge({ due, state }: { due: string; state: DeadlineState }) {
-  const title =
-    state === 'overdue' ? 'Termín uplynul' : state === 'today' ? 'Termín je dnes' : state === 'soon' ? 'Termín se blíží' : 'Termín';
+function ConflictBadge({ conflicts }: { conflicts: string[] }) {
+  return (
+    <InfoBadge className="conflict" text={conflicts.join(' ')}>
+      <TriangleAlert size={12} />
+      {conflicts.length > 1 && conflicts.length}
+    </InfoBadge>
+  );
+}
+
+function LockBadge({ text }: { text: string }) {
+  return (
+    <InfoBadge className="locked" text={text}>
+      <Lock size={12} />
+    </InfoBadge>
+  );
+}
+
+function DueBadge({ due, state, milestone }: { due: string; state: DeadlineState; milestone?: boolean }) {
+  const title = milestone
+    ? state === 'past'
+      ? 'Datum milníku uplynulo'
+      : state === 'today'
+        ? 'Milník je dnes'
+        : state === 'soon'
+          ? 'Milník se blíží'
+          : 'Datum milníku'
+    : state === 'overdue'
+      ? 'Termín uplynul'
+      : state === 'today'
+        ? 'Termín je dnes'
+        : state === 'soon'
+          ? 'Termín se blíží'
+          : 'Termín';
   return (
     <span className={`chip due ${state}`} title={title}>
-      <CalendarClock size={12} />
+      {state === 'past' ? <CalendarCheck size={12} /> : <CalendarClock size={12} />}
       {due}
     </span>
   );
 }
 
-function Chips({ data }: { data: FlowNodeData }) {
+function Tags({ data }: { data: FlowNodeData }) {
+  return (
+    <>
+      {data.tags.map((t) => (
+        <span className="chip tag" key={t}>
+          #{t}
+        </span>
+      ))}
+      {data.moreTags > 0 && <span className="chip tag">+{data.moreTags}</span>}
+    </>
+  );
+}
+
+function TaskChips({ data }: { data: FlowNodeData }) {
   const st = STATUS_META[data.status];
   const showStatus = data.status === 'in_progress' || data.status === 'waiting' || data.status === 'blocked';
   const any =
-    showStatus || data.due || data.dateConflict || data.subtasks || data.checklist || data.tags.length || data.hasNotes || data.priority === 'critical';
+    showStatus ||
+    data.due ||
+    data.conflicts.length ||
+    data.blocked ||
+    data.subtasks ||
+    data.checklist ||
+    data.tags.length ||
+    data.hasNotes ||
+    data.priority === 'critical';
   if (!any) return null;
   return (
     <div className="chips">
       {data.priority === 'critical' && <span className="chip prio-critical">Kritická</span>}
+      {data.blocked && <LockBadge text={data.blocked} />}
       {showStatus && (
         <span className={`chip status ${st.tone}`}>
           <st.Icon size={12} />
@@ -85,7 +160,7 @@ function Chips({ data }: { data: FlowNodeData }) {
         </span>
       )}
       {data.due && <DueBadge due={data.due} state={data.dueState} />}
-      {data.dateConflict && <ConflictBadge kind={data.kind} />}
+      {data.conflicts.length > 0 && <ConflictBadge conflicts={data.conflicts} />}
       {data.subtasks && (
         <span className="chip" title="Hotové přímé podúkoly">
           <ListTree size={12} />
@@ -98,16 +173,71 @@ function Chips({ data }: { data: FlowNodeData }) {
           {data.checklist.done}/{data.checklist.total}
         </span>
       )}
-      {data.tags.map((t) => (
-        <span className="chip tag" key={t}>
-          #{t}
-        </span>
-      ))}
-      {data.moreTags > 0 && <span className="chip tag">+{data.moreTags}</span>}
+      <Tags data={data} />
       {data.hasNotes && <StickyNote size={13} className="notes-badge" aria-label="Má poznámky" />}
     </div>
   );
 }
+
+/** Konektory pro tažení nové vazby (jen myš – na dotyku tlačítko Propojit). */
+function Connectors({ id }: { id: string }) {
+  return (
+    <>
+      {(['top', 'right', 'bottom', 'left'] as const).map((side) => (
+        <span
+          key={side}
+          className={`mm-conn ${side} nodrag nopan`}
+          title="Táhněte na jiný uzel pro vytvoření vazby"
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.stopPropagation();
+            e.preventDefault();
+            startLinkDrag({ mode: 'create', sourceId: id }, e.nativeEvent);
+          }}
+          onClick={stop}
+          onDoubleClick={stop}
+        />
+      ))}
+    </>
+  );
+}
+
+function CollapseButton({ id, data }: { id: string; data: FlowNodeData }) {
+  if (!data.collapsible) return null;
+  const label = data.collapsed ? `Rozbalit větev (skryto ${data.hiddenCount})` : 'Sbalit větev';
+  return (
+    <button
+      className={`collapse-btn nodrag nopan${data.collapsed ? ' collapsed' : ''}`}
+      title={`${label} (mezerník)`}
+      aria-label={label}
+      aria-expanded={!data.collapsed}
+      onPointerDown={stop}
+      onDoubleClick={stop}
+      onClick={(e) => {
+        e.stopPropagation();
+        toggleCollapse(id);
+      }}
+    >
+      {data.collapsed ? `+${data.hiddenCount}` : <Minus size={13} strokeWidth={3} />}
+    </button>
+  );
+}
+
+function SharedBadge() {
+  return (
+    <span className="shared-badge" title="Sdílený uzel (více rodičů)">
+      <Link2 size={12} />
+    </span>
+  );
+}
+
+/* Skryté handly zůstávají kvůli React Flow; místo uchycení počítá FloatingEdge. */
+const Handles = () => (
+  <>
+    <Handle type="target" position={Position.Left} id="l" className="mm-handle" isConnectable={false} />
+    <Handle type="source" position={Position.Right} id="r" className="mm-handle" isConnectable={false} />
+  </>
+);
 
 function TaskNode({ id, data, selected }: { id: string; data: FlowNodeData; selected: boolean }) {
   const done = data.status === 'done';
@@ -124,7 +254,7 @@ function TaskNode({ id, data, selected }: { id: string; data: FlowNodeData; sele
   ].join(' ');
   return (
     <div className={cls} style={style}>
-      <Handle type="target" position={Position.Left} id="l" className="mm-handle" isConnectable={false} />
+      <Handles />
       <span className="prio-stripe" title={`Priorita: ${PRIORITY_META[data.priority].label}`} />
       <div className="task-main">
         <button
@@ -146,18 +276,50 @@ function TaskNode({ id, data, selected }: { id: string; data: FlowNodeData; sele
         {taskIcon && <taskIcon.Icon size={15} className="task-icon" aria-label={taskIcon.label} />}
         <span className={`title${data.title.trim() ? '' : ' empty'}`}>{data.title.trim() || 'Bez názvu'}</span>
       </div>
-      <Chips data={data} />
-      {data.shared && (
-        <span className="shared-badge" title="Sdílený uzel (více rodičů)">
-          <Link2 size={12} />
-        </span>
-      )}
-      <Handle type="source" position={Position.Right} id="r" className="mm-handle" isConnectable={false} />
+      <TaskChips data={data} />
+      {data.shared && <SharedBadge />}
+      <Connectors id={id} />
+      <CollapseButton id={id} data={data} />
     </div>
   );
 }
 
-function ProjectNode({ data, selected }: { data: FlowNodeData; selected: boolean }) {
+function MilestoneNode({ id, data, selected }: { id: string; data: FlowNodeData; selected: boolean }) {
+  const icon = projectIcon(data.icon);
+  const style: CSSProperties & Record<string, string | undefined> = {};
+  if (data.accent) style['--ms-color'] = data.accent;
+  const cls = ['mm-node milestone', data.shared ? 'shared' : '', selected ? 'selected' : '', data.dueState === 'past' ? 'past' : ''].join(' ');
+  const chips = data.due || data.blocked || data.conflicts.length || data.tags.length || data.hasNotes;
+  return (
+    <div className={cls} style={style}>
+      <Handles />
+      <span className="ms-shape" aria-hidden />
+      <div className="ms-body">
+        <div className="task-main">
+          {icon ? (
+            <icon.Icon size={16} className="task-icon" aria-label={icon.label} />
+          ) : (
+            <Milestone size={16} className="task-icon" aria-label="Milník" />
+          )}
+          <span className={`title${data.title.trim() ? '' : ' empty'}`}>{data.title.trim() || 'Bez názvu'}</span>
+        </div>
+        {chips ? (
+          <div className="chips">
+            {data.blocked && <LockBadge text={data.blocked} />}
+            {data.due && <DueBadge due={data.due} state={data.dueState} milestone />}
+            {data.conflicts.length > 0 && <ConflictBadge conflicts={data.conflicts} />}
+            <Tags data={data} />
+            {data.hasNotes && <StickyNote size={13} className="notes-badge" aria-label="Má poznámky" />}
+          </div>
+        ) : null}
+      </div>
+      {data.shared && <SharedBadge />}
+      <Connectors id={id} />
+    </div>
+  );
+}
+
+function ProjectNode({ id, data, selected }: { id: string; data: FlowNodeData; selected: boolean }) {
   const style: CSSProperties & Record<string, string | undefined> = {
     background: data.fill,
     color: data.textColor,
@@ -170,7 +332,7 @@ function ProjectNode({ data, selected }: { data: FlowNodeData; selected: boolean
   const st = STATUS_META[data.status];
   return (
     <div className={cls} style={style}>
-      <Handle type="target" position={Position.Left} id="l" className="mm-handle" isConnectable={false} />
+      <Handles />
       <div className="project-head">
         {icon && <icon.Icon size={20} className="project-icon" aria-label={icon.label} />}
         <span className={`title${data.title.trim() ? '' : ' empty'}`}>{data.title.trim() || 'Bez názvu'}</span>
@@ -195,37 +357,27 @@ function ProjectNode({ data, selected }: { data: FlowNodeData; selected: boolean
           </div>
         </div>
       )}
-      {(data.due || data.dateConflict || data.priority === 'high' || data.priority === 'critical' || data.tags.length > 0) && (
+      {(data.due || data.conflicts.length > 0 || data.priority === 'high' || data.priority === 'critical' || data.tags.length > 0) && (
         <div className="chips">
           {(data.priority === 'high' || data.priority === 'critical') && (
             <span className={`chip prio-${data.priority}`}>{PRIORITY_META[data.priority].label}</span>
           )}
           {data.due && <DueBadge due={data.due} state={data.dueState} />}
-          {data.dateConflict && <ConflictBadge kind={data.kind} />}
-          {data.tags.map((t) => (
-            <span className="chip tag" key={t}>
-              #{t}
-            </span>
-          ))}
-          {data.moreTags > 0 && <span className="chip tag">+{data.moreTags}</span>}
+          {data.conflicts.length > 0 && <ConflictBadge conflicts={data.conflicts} />}
+          <Tags data={data} />
         </div>
       )}
-      {data.shared && (
-        <span className="shared-badge" title="Sdílený uzel (více rodičů)">
-          <Link2 size={12} />
-        </span>
-      )}
-      <Handle type="source" position={Position.Right} id="r" className="mm-handle" isConnectable={false} />
+      {data.shared && <SharedBadge />}
+      <Connectors id={id} />
+      <CollapseButton id={id} data={data} />
     </div>
   );
 }
 
 function MapNodeViewImpl({ id, data, selected }: NodeProps<FlowNode>) {
-  return data.kind === 'project' ? (
-    <ProjectNode data={data} selected={!!selected} />
-  ) : (
-    <TaskNode id={id} data={data} selected={!!selected} />
-  );
+  if (data.kind === 'project') return <ProjectNode id={id} data={data} selected={!!selected} />;
+  if (data.kind === 'milestone') return <MilestoneNode id={id} data={data} selected={!!selected} />;
+  return <TaskNode id={id} data={data} selected={!!selected} />;
 }
 
 export const MapNodeView = memo(MapNodeViewImpl);

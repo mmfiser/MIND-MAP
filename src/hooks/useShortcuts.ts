@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { addChildTo, addSiblingTo, deleteWithConfirm } from '../app/actions';
 import { saveToFile } from '../app/fileSync';
+import { cancelLinkPick, toggleCollapse } from '../app/linkActions';
 import { useDocStore } from '../store/docStore';
 import { useUiStore } from '../store/uiStore';
 
@@ -11,7 +12,7 @@ function isEditable(t: EventTarget | null): boolean {
 
 /**
  * Klávesové zkratky: Tab = podúkol, Enter = sourozenec, Delete = smazat,
- * F = vystředit vybraný, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, Ctrl+S.
+ * F = vystředit vybraný, mezerník = sbalit / rozbalit větev, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, Ctrl+S.
  */
 export function useShortcuts(): void {
   useEffect(() => {
@@ -44,6 +45,8 @@ export function useShortcuts(): void {
       const sel = ui.selectedId;
       if (e.key === 'Escape') {
         if (ui.contextMenu) ui.set({ contextMenu: null });
+        else if (ui.linkPick) cancelLinkPick();
+        else if (ui.selectedEdge) ui.set({ selectedEdge: null, edgeMenu: null });
         else ui.select(null);
         return;
       }
@@ -60,6 +63,9 @@ export function useShortcuts(): void {
       } else if (key === 'f') {
         e.preventDefault();
         ui.focusNode(sel);
+      } else if (e.key === ' ' && !(e.target instanceof HTMLButtonElement)) {
+        e.preventDefault();
+        toggleCollapse(sel);
       }
     };
     window.addEventListener('keydown', onKey);

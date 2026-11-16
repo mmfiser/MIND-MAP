@@ -5,6 +5,10 @@ import {
   CornerDownRight,
   Flag,
   FolderPlus,
+  FoldVertical,
+  Link2,
+  Milestone,
+  UnfoldVertical,
   GitFork,
   ListPlus,
   MoveRight,
@@ -24,6 +28,7 @@ import {
   setStatusOf,
   toggleDone,
 } from '../../app/actions';
+import { addMilestone, startLinkPick, toggleCollapse } from '../../app/linkActions';
 import { PRIORITY_META, PRIORITY_ORDER, STATUS_META, STATUS_ORDER } from '../common/statusMeta';
 import { parentEdges } from '../../model/graph';
 import { useDocStore } from '../../store/docStore';
@@ -40,7 +45,11 @@ export function nodeMenuEntries(nodeId: string, at?: { x: number; y: number }): 
   const parents = parentEdges(doc, nodeId);
   const node = doc.nodes[nodeId]!;
   const pos = at ?? { x: window.innerWidth / 2 - 110, y: window.innerHeight / 3 };
-  const entries: MenuEntry[] = [
+  const milestone = node.type === 'milestone';
+  const hasKids = Object.values(doc.edges).some(
+    (e) => e.kind === 'hierarchy' && e.source === nodeId && !doc.nodes[e.target]?.deletedAt,
+  );
+  const entries: MenuEntry[] = milestone ? [] : [
     node.status === 'done'
       ? { key: 'reopen', label: 'Znovu otevřít', icon: <RotateCcw size={I} />, onSelect: () => toggleDone(nodeId) }
       : { key: 'done', label: 'Hotovo', icon: <CircleCheck size={I} />, onSelect: () => toggleDone(nodeId) },
@@ -57,8 +66,28 @@ export function nodeMenuEntries(nodeId: string, at?: { x: number; y: number }): 
       onSelect: () => ui.set({ subMenu: { ...pos, nodeId, kind: 'priority' } }),
     },
     'sep',
-    { key: 'child', label: 'Přidat podúkol', icon: <CornerDownRight size={I} />, kbd: 'Tab', onSelect: () => addChildTo(nodeId) },
+  ];
+  if (!milestone) {
+    entries.push({ key: 'child', label: 'Přidat podúkol', icon: <CornerDownRight size={I} />, kbd: 'Tab', onSelect: () => addChildTo(nodeId) });
+  }
+  entries.push(
     { key: 'sib', label: 'Přidat sourozence', icon: <ListPlus size={I} />, kbd: 'Enter', onSelect: () => addSiblingTo(nodeId) },
+  );
+  if (!milestone) {
+    entries.push({ key: 'msChild', label: 'Přidat milník jako poduzel', icon: <Milestone size={I} />, onSelect: () => addMilestone(nodeId, 'child') });
+  }
+  entries.push(
+    { key: 'msSib', label: 'Přidat milník jako sourozence', icon: <Milestone size={I} />, onSelect: () => addMilestone(nodeId, 'sibling') },
+    { key: 'link', label: 'Propojit s…', icon: <Link2 size={I} />, onSelect: () => startLinkPick(nodeId) },
+  );
+  if (hasKids) {
+    entries.push(
+      node.collapsed
+        ? { key: 'expand', label: 'Rozbalit větev', icon: <UnfoldVertical size={I} />, kbd: 'Mezera', onSelect: () => toggleCollapse(nodeId) }
+        : { key: 'collapse', label: 'Sbalit větev', icon: <FoldVertical size={I} />, kbd: 'Mezera', onSelect: () => toggleCollapse(nodeId) },
+    );
+  }
+  entries.push(
     { key: 'notes', label: 'Poznámky', icon: <StickyNote size={I} />, onSelect: () => ui.set({ notesFor: nodeId }) },
     'sep',
     {
@@ -73,7 +102,7 @@ export function nodeMenuEntries(nodeId: string, at?: { x: number; y: number }): 
       icon: <GitFork size={I} />,
       onSelect: () => ui.set({ picker: { mode: 'addParent', nodeId, fromParentId: null } }),
     },
-  ];
+  );
   for (const p of parents) {
     const name = doc.nodes[p.source]?.title.trim() || 'bez názvu';
     entries.push({

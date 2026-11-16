@@ -51,6 +51,29 @@ export interface PasswordDialog {
   resolve: (value: string | null) => void;
 }
 
+/** Výběr cílového uzlu klepnutím (tlačítko Propojit / Změnit cíl / Změnit zdroj). */
+export type LinkPick =
+  | { mode: 'create'; sourceId: string }
+  | { mode: 'reconnect'; edgeId: string; end: 'source' | 'target' };
+
+/** Nabídka vybrané vazby (čára na ploše). */
+export interface EdgeMenuState {
+  x: number;
+  y: number;
+  /** id vykreslené čáry (u sloučených `m:…`) */
+  routedId: string;
+  /** skutečné vazby, které čára představuje */
+  edgeIds: string[];
+}
+
+/** Nabídka typu nové vazby (po tažení z konektoru nebo klepnutí na cíl). */
+export interface LinkTypeMenuState {
+  x: number;
+  y: number;
+  source: string;
+  target: string;
+}
+
 export type PersistStatus = 'unknown' | 'granted' | 'denied' | 'unsupported';
 
 interface UiState {
@@ -83,6 +106,13 @@ interface UiState {
   trashOpen: boolean;
   /** Druhá úroveň kontextové nabídky (Stav… / Priorita…). */
   subMenu: { x: number; y: number; nodeId: string; kind: 'status' | 'priority' } | null;
+  /** Fáze 3: vazby. */
+  selectedEdge: string | null;
+  edgeMenu: EdgeMenuState | null;
+  linkPick: LinkPick | null;
+  linkTypeMenu: LinkTypeMenuState | null;
+  /** Zvýraznit vazby vybraného uzlu a ztlumit ostatní (pamatuje se). */
+  highlightLinks: boolean;
 
   set(patch: Partial<UiState>): void;
   select(id: string | null, openDetail?: boolean): void;
@@ -93,6 +123,25 @@ interface UiState {
 }
 
 let toastSeq = 1;
+
+function readFlag(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === '1') return true;
+    if (v === '0') return false;
+  } catch {
+    /* localStorage nedostupný */
+  }
+  return fallback;
+}
+
+export function writeFlag(key: string, value: boolean): void {
+  try {
+    localStorage.setItem(key, value ? '1' : '0');
+  } catch {
+    /* nevadí */
+  }
+}
 
 function initialTheme(): Theme {
   try {
@@ -128,12 +177,17 @@ export const useUiStore = create<UiState>()((set) => ({
   today: todayYmd(),
   trashOpen: false,
   subMenu: null,
+  selectedEdge: null,
+  edgeMenu: null,
+  linkPick: null,
+  linkTypeMenu: null,
+  highlightLinks: readFlag('mapa-highlight-links', true),
 
   set(patch) {
     set(patch);
   },
   select(id, openDetail = true) {
-    set((s) => ({ selectedId: id, detailOpen: id ? openDetail || s.detailOpen : false }));
+    set((s) => ({ selectedId: id, selectedEdge: null, detailOpen: id ? openDetail || s.detailOpen : false }));
   },
   toast(text, kind = 'info') {
     const id = toastSeq++;

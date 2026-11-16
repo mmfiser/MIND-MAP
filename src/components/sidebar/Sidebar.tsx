@@ -1,9 +1,11 @@
-import { ChevronDown, ChevronRight, GripVertical, Link2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Crosshair, FoldVertical, GripVertical, Link2, Milestone, UnfoldVertical, X } from 'lucide-react';
 import { memo, useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { detachFrom, moveUnder } from '../../app/actions';
+import { goToNode, handlePickTarget, startLinkPick, toggleCollapse } from '../../app/linkActions';
+import { Menu, type MenuEntry } from '../common/Menu';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { buildHierarchyIndex, rootNodes, type HierarchyIndex } from '../../model/graph';
-import { wouldCreateCycle } from '../../model/hierarchy';
+import { describeCycle, findCyclePath, parentRuleViolation } from '../../model/hierarchy';
 import { colorHex } from '../../model/labels';
 import { projectIcon } from '../common/projectIcons';
 import type { MapDocument } from '../../model/types';
@@ -45,6 +47,7 @@ interface RowProps {
   onToggle: (key: string) => void;
   onSelect: (id: string) => void;
   onDragStart: (e: ReactPointerEvent, nodeId: string, parentId: string | null) => void;
+  onMenu: (x: number, y: number, nodeId: string) => void;
 }
 
 const TreeRow = memo(function TreeRow(p: RowProps) {
@@ -72,6 +75,10 @@ const TreeRow = memo(function TreeRow(p: RowProps) {
         data-tree-node={n.id}
         data-tree-key={p.pathKey}
         onClick={() => p.onSelect(n.id)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          p.onMenu(e.clientX, e.clientY, n.id);
+        }}
         onPointerDown={(e) => {
           if (e.pointerType === 'mouse' && e.button === 0) p.onDragStart(e, n.id, p.parentId);
         }}
@@ -106,6 +113,8 @@ const TreeRow = memo(function TreeRow(p: RowProps) {
               />
             );
           })()
+        ) : n.type === 'milestone' ? (
+          <Milestone size={16} className="tree-icon" style={{ color: 'var(--text-2)' }} aria-label="Milník" />
         ) : (
           <span
             className={`tree-dot${n.type === 'project' ? '' : ' task'}`}
@@ -117,6 +126,11 @@ const TreeRow = memo(function TreeRow(p: RowProps) {
         >
           {n.title.trim() || 'Bez názvu'}
         </span>
+        {n.collapsed && kids.length > 0 && (
+          <span className="tree-collapsed" title="Větev je na mapě sbalená (změníte v nabídce položky)">
+            <FoldVertical size={14} />
+          </span>
+        )}
         {shared && (
           <span className="tree-shared" title="Sdílený uzel – je i pod jiným rodičem">
             <Link2 size={14} />
@@ -179,12 +193,57 @@ export function Sidebar() {
   const onSelect = useCallback(
     (id: string) => {
       const ui = useUiStore.getState();
-      ui.select(id, true);
-      ui.focusNode(id);
+      if (ui.linkPick) {
+        // Režim Propojit: položka rejstříku slouží jako cíl.
+        const r = document.querySelector('.sidebar')?.getBoundingClientRect();
+        handlePickTarget(id, r ? r.right : 120, r ? r.top + 80 : 120);
+        if (mobile) ui.set({ sidebarOpen: false });
+        return;
+      }
+      goToNode(id);
       if (mobile) ui.set({ sidebarOpen: false });
     },
     [mobile],
   );
+
+  const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const onMenu = useCallback((x: number, y: number, nodeId: string) => setMenu({ x, y, nodeId }), []);
+  const menuEntries = (): MenuEntry[] => {
+    if (!menu || !doc || !index) return [];
+    const n = doc.nodes[menu.nodeId];
+    if (!n) return [];
+    const kids = (index.children.get(n.id) ?? []).length > 0;
+    const entries: MenuEntry[] = [{ title: n.title.trim() || 'Bez názvu' }];
+    if (kids) {
+      entries.push(
+        n.collapsed
+          ? { key: 'exp', label: 'Rozbalit na mapě', icon: <UnfoldVertical size={17} />, onSelect: () => toggleCollapse(n.id) }
+          : { key: 'col', label: 'Sbalit na mapě', icon: <FoldVertical size={17} />, onSelect: () => toggleCollapse(n.id) },
+      );
+    }
+    entries.push(
+      {
+        key: 'focus',
+        label: 'Vystředit na mapě',
+        icon: <Crosshair size={17} />,
+        onSelect: () => {
+          goToNode(n.id);
+          if (mobile) useUiStore.getState().set({ sidebarOpen: false });
+        },
+      },
+      {
+        key: 'link',
+        label: 'Propojit s…',
+        icon: <Link2 size={17} />,
+        onSelect: () => {
+          startLinkPick(n.id);
+          if (mobile) useUiStore.getState().set({ sidebarOpen: false });
+        },
+      },
+    );
+    return entries;
+  };
 
   const evaluate = (state: DragState, x: number, y: number): DragState => {
     const el = document.elementFromPoint(x, y);
@@ -206,11 +265,11 @@ export function Sidebar() {
         const fromEdge = Object.values(d.edges).find(
           (e) => e.kind === 'hierarchy' && e.source === state.fromParentId && e.target === state.nodeId,
         );
-        valid = !wouldCreateCycle(d, 'hierarchy', over, state.nodeId, fromEdge?.id);
-        if (!valid) {
-          const t = d.nodes[over]?.title.trim() || 'bez názvu';
-          reason = `Nelze: „${t}“ leží ve větvi uzlu „${state.title}“, vznikl by cyklus.`;
-        }
+        const rule = parentRuleViolation(d, over);
+        const path = rule ? null : findCyclePath(d, 'hierarchy', over, state.nodeId, fromEdge?.id);
+        valid = !rule && !path;
+        if (rule) reason = rule;
+        else if (path) reason = describeCycle(d, 'hierarchy', path);
       }
     } else if (rootDrop) {
       over = 'root';
@@ -327,10 +386,12 @@ export function Sidebar() {
               onToggle={onToggle}
               onSelect={onSelect}
               onDragStart={onDragStart}
+              onMenu={onMenu}
             />
           ))}
         </div>
       </nav>
+      {menu && <Menu x={menu.x} y={menu.y} entries={menuEntries()} onClose={closeMenu} />}
       {drag && (
         <div className="drag-ghost" style={{ left: drag.x, top: drag.y }}>
           {drag.title}

@@ -1,15 +1,15 @@
-import { CircleCheck, CornerDownRight, GitFork, ListPlus, MoveRight, RotateCcw, StickyNote, Trash2, Unlink, X } from 'lucide-react';
+import { CircleCheck, CornerDownRight, GitFork, ListPlus, MoveRight, RotateCcw, StickyNote, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   addChildTo,
   addSiblingTo,
   deleteWithConfirm,
-  detachFrom,
   setNodeType,
   toggleDone,
   updateNodeFields,
 } from '../../app/actions';
-import { ChecklistEditor, DateConflictHint, DateField, IconPicker, PrioritySelect, StatusSelect, TagInput } from './Fields';
+import { ChecklistEditor, DateField, IconPicker, PrioritySelect, StatusSelect, TagInput } from './Fields';
+import { BlockedHint, ConflictHints, LinksSection } from './LinksSection';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { parentEdges } from '../../model/graph';
 import { NODE_TYPE_LABELS, PROJECT_PALETTE, colorHex } from '../../model/labels';
@@ -51,6 +51,7 @@ function DetailContent({ node }: { node: MapNode }) {
   const notes = useBufferedField(node, 'notes');
   const titleRef = useRef<HTMLInputElement>(null);
   const parents = parentEdges(doc, node.id);
+  const milestone = node.type === 'milestone';
 
   useEffect(() => {
     if (!editTitleRequest || Date.now() - editTitleRequest > 1000) return;
@@ -80,9 +81,11 @@ function DetailContent({ node }: { node: MapNode }) {
       </label>
 
       <div className="detail-actions">
-        <button className="btn small" onClick={() => addChildTo(node.id)}>
-          <CornerDownRight size={16} /> Podúkol
-        </button>
+        {!milestone && (
+          <button className="btn small" onClick={() => addChildTo(node.id)}>
+            <CornerDownRight size={16} /> Podúkol
+          </button>
+        )}
         <button className="btn small" onClick={() => addSiblingTo(node.id)}>
           <ListPlus size={16} /> Sourozenec
         </button>
@@ -99,7 +102,7 @@ function DetailContent({ node }: { node: MapNode }) {
       <div className="field">
         <span>Typ uzlu</span>
         <div className="segmented" role="group" aria-label="Typ uzlu">
-          {(['project', 'task'] as const).map((t) => (
+          {(['project', 'task', 'milestone'] as const).map((t) => (
             <button key={t} className={node.type === t ? 'on' : ''} aria-pressed={node.type === t} onClick={() => setNodeType(node.id, t)}>
               {NODE_TYPE_LABELS[t]}
             </button>
@@ -127,51 +130,39 @@ function DetailContent({ node }: { node: MapNode }) {
         </div>
       )}
 
-      <div className="field">
-        <span>Stav</span>
-        <StatusSelect node={node} />
-      </div>
+      {!milestone && (
+        <>
+          <div className="field">
+            <span>Stav</span>
+            <StatusSelect node={node} />
+          </div>
 
-      <div className="field">
-        <span>Priorita</span>
-        <PrioritySelect node={node} />
-      </div>
+          <div className="field">
+            <span>Priorita</span>
+            <PrioritySelect node={node} />
+          </div>
+        </>
+      )}
 
-      <div className="date-grid">
-        <DateField node={node} field="startDate" label={node.type === 'project' ? 'Zahájení' : 'Začátek'} />
-        <DateField node={node} field="dueDate" label={node.type === 'project' ? 'Deadline' : 'Termín dokončení'} />
-      </div>
-      <DateConflictHint node={node} />
+      {milestone ? (
+        <div className="date-grid">
+          <DateField node={node} field="dueDate" label="Datum milníku" />
+        </div>
+      ) : (
+        <div className="date-grid">
+          <DateField node={node} field="startDate" label={node.type === 'project' ? 'Zahájení' : 'Začátek'} />
+          <DateField node={node} field="dueDate" label={node.type === 'project' ? 'Deadline' : 'Termín dokončení'} />
+        </div>
+      )}
+      <ConflictHints node={node} />
+      <BlockedHint node={node} />
       <div className="meta-row">
         <span>Vytvořeno</span>
         <span>{dateFmt.format(new Date(node.createdAt))}</span>
       </div>
 
+      <LinksSection node={node} />
       <div className="field">
-        <span>{parents.length > 1 ? `Nadřazené uzly (${parents.length}) – sdílený uzel` : 'Nadřazený uzel'}</span>
-        <div className="parent-list">
-          {parents.length === 0 && <div className="muted">Žádný – uzel je volně na ploše.</div>}
-          {parents.map((p) => {
-            const pn = doc.nodes[p.source];
-            return (
-              <div className="parent-item" key={p.id}>
-                <span
-                  className="name"
-                  title="Přejít na uzel"
-                  onClick={() => {
-                    ui().select(p.source, true);
-                    ui().focusNode(p.source);
-                  }}
-                >
-                  {pn?.title.trim() || 'Bez názvu'}
-                </span>
-                <button className="icon-btn" title="Odpojit od tohoto rodiče" aria-label="Odpojit od tohoto rodiče" onClick={() => detachFrom(node.id, p.source)}>
-                  <Unlink size={16} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
         <div className="detail-actions">
           <button
             className="btn small"
@@ -191,7 +182,7 @@ function DetailContent({ node }: { node: MapNode }) {
 
       {node.type !== 'project' && <IconPicker node={node} />}
 
-      <ChecklistEditor node={node} />
+      {!milestone && <ChecklistEditor node={node} />}
 
       {!mobile && (
         <label className="field">
@@ -208,7 +199,7 @@ function DetailContent({ node }: { node: MapNode }) {
         </label>
       )}
 
-      <div className="done-row">
+      {!milestone && <div className="done-row">
         {node.status === 'done' ? (
           <button className="btn" onClick={() => toggleDone(node.id)}>
             <RotateCcw size={17} /> Znovu otevřít
@@ -218,7 +209,7 @@ function DetailContent({ node }: { node: MapNode }) {
             <CircleCheck size={17} /> Hotovo
           </button>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

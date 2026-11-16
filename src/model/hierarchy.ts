@@ -20,20 +20,20 @@ function exists(data: DocData, id: string): boolean {
 }
 
 /**
- * Vznikl by přidáním vazby source → target cyklus?
+ * Cesta, která by s novou vazbou source → target uzavřela cyklus:
+ * [source, target, …, source] (po vazbách stejného druhu), jinak null.
  * Platí pro `hierarchy` a `dependency`; `related` cykly povoluje.
  * `ignoreEdgeId` – vazba, kterou při kontrole přeskočit (např. při přesunu).
  */
-export function wouldCreateCycle(
+export function findCyclePath(
   data: DocData,
   kind: EdgeKind,
   source: string,
   target: string,
   ignoreEdgeId?: string,
-): boolean {
-  if (kind === 'related') return false;
-  if (source === target) return true;
-  // Cyklus vznikne, pokud z `target` vede (po vazbách stejného druhu) cesta do `source`.
+): string[] | null {
+  if (kind === 'related') return null;
+  if (source === target) return [source, source];
   const out = new Map<string, string[]>();
   for (const e of Object.values(data.edges)) {
     if (e.kind !== kind || e.id === ignoreEdgeId) continue;
@@ -43,24 +43,70 @@ export function wouldCreateCycle(
     if (!l) out.set(e.source, (l = []));
     l.push(e.target);
   }
+  // Hledání do šířky z `target` do `source` – nejkratší cesta pro srozumitelnou hlášku.
+  const prev = new Map<string, string>();
   const seen = new Set<string>([target]);
-  const stack = [target];
-  while (stack.length) {
-    const cur = stack.pop()!;
+  const queue = [target];
+  for (let i = 0; i < queue.length; i++) {
+    const cur = queue[i]!;
     for (const next of out.get(cur) ?? []) {
-      if (next === source) return true;
-      if (!seen.has(next)) {
-        seen.add(next);
-        stack.push(next);
+      if (seen.has(next)) continue;
+      seen.add(next);
+      prev.set(next, cur);
+      if (next === source) {
+        const path = [source];
+        let p: string | undefined = source;
+        while (p !== target) {
+          p = prev.get(p!)!;
+          path.push(p);
+        }
+        path.reverse(); // target … source
+        return [source, ...path];
       }
+      queue.push(next);
     }
   }
-  return false;
+  return null;
 }
 
-function cycleReason(data: DocData, parentId: string, childId: string): string {
+/** Vznikl by přidáním vazby source → target cyklus? */
+export function wouldCreateCycle(
+  data: DocData,
+  kind: EdgeKind,
+  source: string,
+  target: string,
+  ignoreEdgeId?: string,
+): boolean {
+  return findCyclePath(data, kind, source, target, ignoreEdgeId) !== null;
+}
+
+const MAX_PATH_NAMES = 6;
+
+/** Česky popsaný cyklus s názvy uzlů: „A“ → „B“ → „A“. */
+export function describeCycle(data: DocData, kind: EdgeKind, path: string[]): string {
+  if (path.length === 2 && path[0] === path[1]) {
+    return `Uzel ${title(data, path[0]!)} nemůže být propojen sám se sebou.`;
+  }
+  let names = path.map((id) => title(data, id));
+  if (names.length > MAX_PATH_NAMES) names = [...names.slice(0, MAX_PATH_NAMES - 2), '…', names[names.length - 1]!];
+  const chain = names.join(' → ');
+  return kind === 'dependency'
+    ? `Vazbu nelze vytvořit: úkoly by na sebe čekaly v kruhu (${chain}).`
+    : `Vazbu nelze vytvořit: vznikl by cyklus v hierarchii (${chain}).`;
+}
+
+function cycleReason(data: DocData, parentId: string, childId: string, ignoreEdgeId?: string): string {
   if (parentId === childId) return `Uzel ${title(data, childId)} nemůže být nadřazený sám sobě.`;
-  return `Nelze: ${title(data, childId)} je nadřazený uzlu ${title(data, parentId)}, vznikl by cyklus.`;
+  const path = findCyclePath(data, 'hierarchy', parentId, childId, ignoreEdgeId);
+  return path ? describeCycle(data, 'hierarchy', path) : 'Vznikl by cyklus.';
+}
+
+export const MILESTONE_NO_CHILDREN =
+  'Milník nemůže mít poduzly. Další úkoly na něj navažte závislostí nebo souvislostí.';
+
+/** Smí být uzel rodičem v hierarchii? (milník ne) */
+export function parentRuleViolation(data: DocData, parentId: string): string | null {
+  return data.nodes[parentId]?.type === 'milestone' ? MILESTONE_NO_CHILDREN : null;
 }
 
 function nextOrder(data: DocData, parentId: string): number {
@@ -86,6 +132,8 @@ export function addNode(data: DocData, node: MapNode): DocData {
 /** Přidá nový uzel jako poslední dítě rodiče. */
 export function addChild(data: DocData, parentId: string, node: MapNode): OpResult {
   if (!exists(data, parentId)) return fail('Nadřazený uzel neexistuje.');
+  const rule = parentRuleViolation(data, parentId);
+  if (rule) return fail(rule);
   const withNode = addNode(data, node);
   return ok(withEdge(withNode, createEdge('hierarchy', parentId, node.id, nextOrder(data, parentId))));
 }
@@ -114,6 +162,8 @@ export function addSibling(data: DocData, siblingId: string, node: MapNode): OpR
 /** Přidá uzlu dalšího rodiče (vznikne sdílený uzel). */
 export function addParent(data: DocData, childId: string, parentId: string): OpResult {
   if (!exists(data, childId) || !exists(data, parentId)) return fail('Uzel neexistuje.');
+  const rule = parentRuleViolation(data, parentId);
+  if (rule) return fail(rule);
   if (findEdge(data, 'hierarchy', parentId, childId)) {
     return fail(`${title(data, parentId)} už je nadřazeným uzlem ${title(data, childId)}.`);
   }
@@ -146,13 +196,15 @@ export function moveBranch(
 ): OpResult {
   if (!exists(data, nodeId) || !exists(data, toParentId)) return fail('Uzel neexistuje.');
   if (fromParentId === toParentId) return ok(data);
+  const rule = parentRuleViolation(data, toParentId);
+  if (rule) return fail(rule);
   let oldEdge: MapEdge | undefined;
   if (fromParentId) {
     oldEdge = findEdge(data, 'hierarchy', fromParentId, nodeId);
     if (!oldEdge) return fail('Uzel pod původním rodičem není.');
   }
   if (wouldCreateCycle(data, 'hierarchy', toParentId, nodeId, oldEdge?.id)) {
-    return fail(cycleReason(data, toParentId, nodeId));
+    return fail(cycleReason(data, toParentId, nodeId, oldEdge?.id));
   }
   let next = oldEdge ? withoutEdges(data, [oldEdge.id]) : data;
   // Pokud už je pod cílovým rodičem (sdílený uzel), stačí odpojit od původního.
