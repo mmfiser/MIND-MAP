@@ -328,7 +328,7 @@ select {
 .tb-btn .tb-label {
   display: none;
 }
-@media (min-width: 1680px) {
+@media (min-width: 2000px) {
   .tb-btn .tb-label {
     display: inline;
   }

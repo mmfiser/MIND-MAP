@@ -111,6 +111,12 @@ export async function lock(): Promise<void> {
     contextMenu: null,
     picker: null,
     settingsOpen: false,
+    filter: null,
+    filterOpen: false,
+    searchQuery: '',
+    searchOpen: false,
+    searchPick: null,
+    bellOpen: false,
   });
 }
 

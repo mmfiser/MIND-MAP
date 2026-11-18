@@ -21,10 +21,16 @@ import {
   Trash2,
   Undo2,
   UnfoldVertical,
+  ZoomIn,
+  Search as SearchIcon,
+  Filter as FilterIcon,
 } from 'lucide-react';
+import { BellButton } from './Bell';
+import { filterCount, openFilter } from './Filter';
+import { SearchBox, focusSearch } from './Search';
 import { useMemo } from 'react';
 import { listTrash } from '../../model/trash';
-import { useCallback, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { addChildTo, addSiblingTo, createProject, deleteWithConfirm } from '../../app/actions';
 import { openFromFile, saveToFile } from '../../app/fileSync';
 import { addMilestone, collapseAll, expandEverything, startLinkPick } from '../../app/linkActions';
@@ -72,8 +78,11 @@ export function TopBar() {
   const gridVisible = useUiStore((s) => s.gridVisible);
   const theme = useUiStore((s) => s.theme);
   const highlightLinks = useUiStore((s) => s.highlightLinks);
+  const autoDetail = useUiStore((s) => s.autoDetail);
   const picking = useUiStore((s) => !!s.linkPick);
   const fileName = useUiStore((s) => s.fileName);
+  const searchOpen = useUiStore((s) => s.searchOpen);
+  const nFilter = filterCount(useUiStore((s) => s.filter));
   const canUndo = useDocStore((s) => s.past.length > 0);
   const canRedo = useDocStore((s) => s.future.length > 0);
   const dirty = useDocStore((s) => s.dirty);
@@ -109,7 +118,18 @@ export function TopBar() {
     ui().set({ highlightLinks: v });
     writeFlag('mapa-highlight-links', v);
   };
+  const toggleAutoDetail = () => {
+    const v = !ui().autoDetail;
+    ui().set({ autoDetail: v });
+    writeFlag('mapa-auto-detail', v);
+  };
   const viewEntries: MenuEntry[] = [
+    {
+      key: 'autoDetail',
+      label: autoDetail ? 'Automatický detail podle zoomu ✓' : 'Automatický detail podle zoomu',
+      icon: <ZoomIn size={18} />,
+      onSelect: toggleAutoDetail,
+    },
     { key: 'collapseAll', label: 'Sbalit vše na projekty', icon: <FoldVertical size={18} />, onSelect: collapseAll },
     { key: 'expandAll', label: 'Rozbalit vše', icon: <UnfoldVertical size={18} />, onSelect: expandEverything },
     {
@@ -140,6 +160,9 @@ export function TopBar() {
 
   const moreEntries: MenuEntry[] = mobile
     ? [
+        { key: 'link', label: 'Propojit…', icon: <Link2 size={18} />, disabled: !selectedId, onSelect: () => startLinkPick(selectedId) },
+        { key: 'filter', label: nFilter ? `Filtr (${nFilter})` : 'Filtr…', icon: <FilterIcon size={18} />, onSelect: openFilter },
+        'sep',
         { key: 'sib', label: 'Sourozenec', icon: <ListPlus size={18} />, disabled: !selectedId, onSelect: () => addSiblingTo(selectedId) },
         { key: 'ms', label: 'Milník', icon: <Milestone size={18} />, onSelect: () => addMilestone(selectedId) },
         { key: 'del', label: 'Smazat…', icon: <Trash2 size={18} />, danger: true, disabled: !selectedId, onSelect: () => void deleteWithConfirm(selectedId) },
@@ -159,6 +182,12 @@ export function TopBar() {
     : [
         ...viewEntries,
         'sep',
+        // Na užších obrazovkách (pod 1100 px) jsou tato tlačítka jen tady.
+        { key: 'open', label: 'Otevřít soubor', icon: <FolderOpen size={18} />, onSelect: () => void openFromFile() },
+        ...(fsa ? [{ key: 'saveAs', label: 'Uložit jako…', icon: <FilePlus2 size={18} />, onSelect: () => void saveToFile(true) }] : []),
+        { key: 'grid', label: gridVisible ? 'Skrýt mřížku' : 'Zobrazit mřížku', icon: <Grid3x3 size={18} />, onSelect: toggleGrid },
+        { key: 'theme', label: themeLabel, icon: themeIcon, onSelect: toggleTheme },
+        'sep',
         { key: 'settings', label: 'Nastavení', icon: <Settings size={18} />, onSelect: () => ui().set({ settingsOpen: true }) },
         { key: 'lock', label: 'Zamknout', icon: <Lock size={18} />, onSelect: () => void lock() },
       ];
@@ -169,16 +198,38 @@ export function TopBar() {
   };
 
   if (mobile) {
+    // Hledání na telefonu: pole přes celou šířku lišty.
+    if (searchOpen) {
+      return (
+        <header className="topbar searching">
+          <SearchBox mobile />
+        </header>
+      );
+    }
+    // Pořadí tlačítek na telefonu – seznam, aby šel snadno upravit (fáze 5: zámek pozic).
+    const items: { key: string; el: ReactNode }[] = [
+      { key: 'sidebar', el: <Tb icon={<ListTree size={I} />} label="Rejstřík" onClick={toggleSidebar} active={sidebarOpen} /> },
+      { key: 'project', el: <Tb icon={<FolderPlus size={I} />} label="Nový projekt" onClick={() => createProject()} /> },
+      { key: 'child', el: <Tb icon={<CornerDownRight size={I} />} label="Podúkol" onClick={() => addChildTo(selectedId)} disabled={!selectedId} /> },
+      { key: 'undo', el: <Tb icon={<Undo2 size={I} />} label="Zpět" onClick={undo} disabled={!canUndo} /> },
+      { key: 'spacer', el: <div className="spacer" /> },
+      { key: 'search', el: <Tb icon={<SearchIcon size={I} />} label="Hledat" onClick={focusSearch} /> },
+      { key: 'bell', el: <BellButton /> },
+      { key: 'save', el: saveBtn },
+      {
+        key: 'more',
+        el: (
+          <Tb icon={<MoreHorizontal size={I} />} label="Další" onClick={openMore} active={picking || nFilter > 0}>
+            {nFilter > 0 && <span className="filter-dot" aria-label="Filtr je zapnutý" />}
+          </Tb>
+        ),
+      },
+    ];
     return (
       <header className="topbar">
-        <Tb icon={<ListTree size={I} />} label="Rejstřík" onClick={toggleSidebar} active={sidebarOpen} />
-        <Tb icon={<FolderPlus size={I} />} label="Nový projekt" onClick={() => createProject()} />
-        <Tb icon={<CornerDownRight size={I} />} label="Podúkol" onClick={() => addChildTo(selectedId)} disabled={!selectedId} />
-        <Tb icon={<Link2 size={I} />} label="Propojit" title="Propojit vybraný uzel s jiným" onClick={() => startLinkPick(selectedId)} disabled={!selectedId} active={picking} />
-        <Tb icon={<Undo2 size={I} />} label="Zpět" onClick={undo} disabled={!canUndo} />
-        <div className="spacer" />
-        {saveBtn}
-        <Tb icon={<MoreHorizontal size={I} />} label="Další" onClick={openMore} />
+        {items.map((i) => (
+          <Fragment key={i.key}>{i.el}</Fragment>
+        ))}
         {more && <Menu x={more.x} y={more.y} entries={moreEntries} onClose={closeMore} alignRight />}
       </header>
     );
@@ -203,16 +254,22 @@ export function TopBar() {
       <Tb icon={<Undo2 size={I} />} label="Zpět" title="Zpět (Ctrl+Z)" onClick={undo} disabled={!canUndo} />
       <Tb icon={<Redo2 size={I} />} label="Znovu" title="Znovu (Ctrl+Y)" onClick={redo} disabled={!canRedo} />
       <div className="spacer" />
+      <SearchBox mobile={false} />
+      <Tb icon={<FilterIcon size={I} />} label="Filtr" title={nFilter ? `Filtr (${nFilter} kritérií)` : 'Filtr'} onClick={openFilter} active={nFilter > 0}>
+        {nFilter > 0 && <span className="count-badge accent">{nFilter}</span>}
+      </Tb>
+      <BellButton />
+      <div className="sep" />
       {dirty && <span className="unsaved-text">Neuloženo do souboru</span>}
       {saveBtn}
-      {fsa && <Tb icon={<FilePlus2 size={I} />} label="Uložit jako" title="Uložit jako… (Ctrl+Shift+S)" onClick={() => void saveToFile(true)} />}
-      <Tb icon={<FolderOpen size={I} />} label="Otevřít" title="Otevřít soubor" onClick={() => void openFromFile()} />
+      {fsa && <Tb icon={<FilePlus2 size={I} />} label="Uložit jako" title="Uložit jako… (Ctrl+Shift+S)" onClick={() => void saveToFile(true)} className="tb-optional" />}
+      <Tb icon={<FolderOpen size={I} />} label="Otevřít" title="Otevřít soubor" onClick={() => void openFromFile()} className="tb-optional" />
       <div className="sep" />
       <Tb icon={<Trash size={I} />} label="Koš" title={trashCount ? `Koš (${trashCount})` : 'Koš'} onClick={openTrash}>
         {trashCount > 0 && <span className="count-badge">{trashCount}</span>}
       </Tb>
-      <Tb icon={<Grid3x3 size={I} />} label="Mřížka" onClick={toggleGrid} active={gridVisible} />
-      <Tb icon={themeIcon} label={theme === 'dark' ? 'Světlý' : 'Tmavý'} title={themeLabel} onClick={toggleTheme} />
+      <Tb icon={<Grid3x3 size={I} />} label="Mřížka" onClick={toggleGrid} active={gridVisible} className="tb-optional" />
+      <Tb icon={themeIcon} label={theme === 'dark' ? 'Světlý' : 'Tmavý'} title={themeLabel} onClick={toggleTheme} className="tb-optional" />
       <Tb icon={<MoreHorizontal size={I} />} label="Další" onClick={openMore} />
       {more && <Menu x={more.x} y={more.y} entries={moreEntries} onClose={closeMore} alignRight />}
     </header>

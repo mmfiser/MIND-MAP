@@ -168,9 +168,8 @@ export function projectIcon(key: string | undefined): ProjectIcon | undefined {
 }
 
 /** Bez diakritiky a malými písmeny – pro vyhledávání. */
-export function foldText(s: string): string {
-  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
-}
+export { foldText } from '../../model/text';
+import { foldText } from '../../model/text';
 
 /** Skupiny ikon filtrované podle dotazu (popisek nebo název skupiny, bez ohledu na diakritiku). */
 export function filterIconGroups(query: string): IconGroup[] {

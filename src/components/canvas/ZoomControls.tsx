@@ -1,6 +1,7 @@
 import { useReactFlow, useStore } from '@xyflow/react';
 import { Crosshair, Maximize, Minus, Plus } from 'lucide-react';
 import { useUiStore } from '../../store/uiStore';
+import { LOD_LABEL } from '../../model/lod';
 
 const MIN = 0.1;
 const MAX = 2.5;
@@ -12,6 +13,8 @@ export function ZoomControls() {
   const rf = useReactFlow();
   const zoom = useStore((s) => s.transform[2]);
   const selectedId = useUiStore((s) => s.selectedId);
+  const autoDetail = useUiStore((s) => s.autoDetail);
+  const level = useUiStore((s) => s.lodLevel);
   const ui = useUiStore.getState;
 
   return (
@@ -31,6 +34,11 @@ export function ZoomControls() {
         <Plus size={18} />
       </button>
       <span className="pct">{Math.round(zoom * 100)} %</span>
+      {autoDetail && (
+        <span className={`lod-label ${level}`} title="Úroveň detailu podle přiblížení (vypnete v menu „⋯“)" aria-live="polite">
+          {LOD_LABEL[level]}
+        </span>
+      )}
       <button
         className="icon-btn"
         title="Vystředit vybraný (F)"

@@ -8,6 +8,7 @@ import { buildHierarchyIndex, childEdges, parentEdges } from '../model/graph';
 import * as H from '../model/hierarchy';
 import * as L from '../model/links';
 import type { DocData, EdgeKind, MapEdge, MapNode, NodeType } from '../model/types';
+import { minZoomForDepth, nodeDepth } from '../model/lod';
 import { collapseAllToProjects, collapsedAncestors, expandAll, setCollapsed } from '../model/visibility';
 import { toast, useUiStore } from '../store/uiStore';
 import { NODE_SIZE, canvasApi, data, run } from './actions';
@@ -165,6 +166,13 @@ export function revealNode(id: string): void {
   if (!d) return;
   const ids = collapsedAncestors(d, id, buildHierarchyIndex(d));
   if (ids.length) run((x) => setCollapsed(x, ids, false));
+}
+
+/** „+N“ u uzlu omezeného oddálením: přiblíží tak, aby byly vidět jeho poduzly. */
+export function zoomIntoNode(id: string): void {
+  const d = data();
+  if (!d) return;
+  useUiStore.getState().focusNode(id, minZoomForDepth(nodeDepth(d, id) + 1));
 }
 
 /** Vybere uzel, případně rozbalí jeho předky a vystředí ho. */

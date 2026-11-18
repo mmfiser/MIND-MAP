@@ -105,6 +105,40 @@ Závislosti a souvislosti smazaného uzlu zůstanou neaktivní a obnovení je vr
 ### Verze dat
 Schéma dokumentu je ve verzi **4**. Soubory a lokální data ze starších verzí se při načtení převedou automaticky. Verze 4 odebere hierarchické vazby, ve kterých byl projekt poduzlem, a po načtení oznámí, kolik vazeb a u kterých projektů odebrala. Soubor z novější verze aplikace se neotevře; aplikace nabídne kontrolu aktualizace.
 
+## Přehled a orientace (fáze 4)
+
+### Automatický detail podle zoomu
+| Úroveň | Zoom | Co je vidět |
+| --- | --- | --- |
+| Přehled | pod 35 % | jen projekty a uzly bez rodiče (velký název, procento, deadline, ⚠ s počtem úkolů po termínu) |
+| Projekty a úkoly | 35–60 % | navíc přímé úkoly a milníky (jen název, termín, zámek, ⚠) |
+| Vše | od 60 % | všechny uzly |
+
+- Mezi úrovněmi je hystereze ±3 procentní body (nahoru se přepne až při 38 % / 63 %, dolů při 32 % / 57 %), takže uzly na hranici neblikají.
+- Je to jen zobrazení: nemění uložené sbalení ani pozice. Ručně sbalená větev zůstává sbalená i při plném detailu.
+- Skryté uzly používají stejnou logiku jako ruční sbalení (přesměrované a sloučené vazby, „+N“). Klepnutí na „+N“ u uzlu omezeného zoomem přiblíží plochu.
+- Výjimky: vybraný uzel, kliknutý výsledek hledání a shody filtru jsou vidět v každé úrovni (i s cestou k nim). Leží-li ve ručně sbalené větvi, sbalený uzel zůstane neztlumený a dostane odznak počtu shod („3 ⧉“).
+- Vystředění uzlu (rejstřík, hledání, zvoneček) rozbalí ručně sbalené předky a přiblíží na plný detail.
+- Úroveň je vidět u ovládání zoomu, vypíná se v menu „⋯“ (volba se pamatuje v prohlížeči).
+
+### Vyhledávání
+- Notebook: pole v horní liště, **Ctrl+F** nebo **/**. Telefon: lupa otevře pole přes celou lištu.
+- Hledá v názvech, štítcích, poznámkách a checklistu bez ohledu na diakritiku a velikost písmen; uzly v koši ne.
+- Výsledky (max. 50): shoda v názvu před ostatními, u každého projekt, stav, termín a kde se shoda našla. Šipky, Enter, Esc.
+
+### Filtry
+- **Zobrazit:** Všechny úkoly, Pouze aktivní, Po termínu, Dokončené, Čekající, Na dnešek, Na příštích 7 dní (dnes až dnes + 7 kalendářních dní).
+- **Projekt, priorita, štítek:** více hodnot; všechny volby platí současně.
+- Platí pro úkoly a podúkoly; milníky jen v časových volbách. Sdílený uzel patří do všech svých projektů.
+- Mapa: ostatní uzly se výrazně ztlumí, cesta ke shodám zůstane vidět. Rejstřík: jen shody a jejich předci, s počtem nahoře.
+- Lišta nad plochou ukazuje aktivní filtr a tlačítko **Zrušit filtr**. Filtr se neukládá, po obnovení stránky je vypnutý.
+
+### Zvoneček
+- Odznak s počtem položek: červený, je-li aspoň jedna červená položka, jinak oranžový.
+- Skupiny: **Po termínu a dnes**, **Blíží se** (1–3 pracovní dny), **Kolize a upozornění**. Bez hotových, zrušených, smazaných uzlů a uplynulých milníků.
+- Řazení podle termínu, při shodě podle priority. Klik vystředí uzel a otevře detail. Přepočítá se při změně dat a o půlnoci.
+- Jen v otevřené aplikaci, žádné systémové notifikace.
+
 ## Spuštění
 
 Je potřeba Node.js 20 nebo novější.
@@ -210,6 +244,7 @@ tests/           Vitest – hierarchie, šifrování, migrace, rozhodování o v
 | Enter | nový sourozenec |
 | Delete | smazat (s potvrzením) |
 | F | vystředit vybraný |
+| Ctrl+F nebo / | hledat |
 | Mezerník | sbalit / rozbalit větev vybraného uzlu |
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | zpět / znovu |
 | Ctrl+S / Ctrl+Shift+S | uložit / uložit jako |

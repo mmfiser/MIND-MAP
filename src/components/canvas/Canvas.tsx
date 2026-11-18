@@ -9,6 +9,7 @@ import {
   type Edge,
   type NodeChange,
   type NodeMouseHandler,
+  type OnMove,
   type OnMoveEnd,
   type Viewport,
 } from '@xyflow/react';
@@ -18,6 +19,9 @@ import { blockedText, handlePickTarget } from '../../app/linkActions';
 import { blockersIndex } from '../../model/blocking';
 import { describeConflict, findDateConflicts, type ConflictReport } from '../../model/conflicts';
 import { computeVisibility, routeEdges, type VisibilityInfo } from '../../model/visibility';
+import { LOD_MAX_DEPTH, lodLevel, type LodLevel } from '../../model/lod';
+import { projectsOf } from '../../model/filters';
+import { filterResult, searchResult } from '../../app/viewQueries';
 import { getSettings, updateSettings } from '../../app/session';
 import { formatShort } from '../../model/dates';
 import { deadlineState } from '../../model/deadline';
@@ -33,6 +37,7 @@ import { LinkDragLayer } from './LinkDrag';
 import { EdgeMenu, LinkPickBar, LinkTypeMenu } from './LinkMenus';
 import { MapNodeView, type FlowNode, type FlowNodeData } from './MapNodeView';
 import { ZoomControls } from './ZoomControls';
+import { FilterBar } from '../toolbar/Filter';
 
 const nodeTypes = { mm: MapNodeView };
 const edgeTypes = { floating: FloatingEdge };
@@ -58,6 +63,10 @@ interface Derived {
   vis: VisibilityInfo;
   conflicts: ConflictReport;
   blockers: Map<string, MapNode[]>;
+  /** úroveň detailu pro zjednodušené vykreslení */
+  detail: LodLevel;
+  /** projekt → počet aktivních úkolů po termínu (souhrn v přehledu) */
+  overdue: Map<string, number>;
 }
 
 /** Odvozená data uzlu pro zobrazení (procenta, termíny, počty…). */
@@ -82,7 +91,12 @@ function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string,
     collapsible: x.vis.hasChildren.has(n.id),
     collapsed: n.collapsed && x.vis.hasChildren.has(n.id),
     hiddenCount: x.vis.hiddenCount.get(n.id) ?? 0,
+    lodLimited: x.vis.lodLimited.has(n.id),
+    marks: x.vis.hiddenMarks.get(n.id) ?? 0,
+    detail: x.detail,
   };
+  // Souhrn úkolů po termínu jen při nižší úrovni detailu (při plném jsou vidět přímo).
+  if (n.type === 'project' && x.detail !== 'full' && x.overdue.get(n.id)) data.overdue = x.overdue.get(n.id);
   if (blockers?.length) data.blocked = blockedText(blockers);
   if (n.type === 'milestone') {
     const p = owningProject(d, n.id, index);
@@ -111,6 +125,11 @@ export function Canvas() {
   const today = useUiStore((s) => s.today);
   const highlightLinks = useUiStore((s) => s.highlightLinks);
   const picking = useUiStore((s) => !!s.linkPick);
+  const autoDetail = useUiStore((s) => s.autoDetail);
+  const level = useUiStore((s) => s.lodLevel);
+  const filter = useUiStore((s) => s.filter);
+  const searchQuery = useUiStore((s) => s.searchQuery);
+  const searchPick = useUiStore((s) => s.searchPick);
   const rf = useReactFlow<FlowNode, Edge>();
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -120,7 +139,38 @@ export function Canvas() {
   const index = useMemo(() => (doc ? buildHierarchyIndex(doc) : null), [doc?.nodes, doc?.edges]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Odvozené informace – přepočet jen při změně dat (ne při posunu plochy).
-  const vis = useMemo(() => (doc && index ? computeVisibility(doc, index) : null), [index]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fres = useMemo(() => filterResult(doc, filter, today), [index, filter, today]); // eslint-disable-line react-hooks/exhaustive-deps
+  const searchIds = useMemo(
+    () => searchResult(doc, searchQuery).results.map((r) => r.id),
+    [doc?.nodes, searchQuery], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const maxDepth = autoDetail ? LOD_MAX_DEPTH[level] : Infinity;
+  // Výjimky z úrovně detailu: vybraný uzel, kliknutý výsledek hledání, shody filtru.
+  const keep = useMemo(() => {
+    if (maxDepth === Infinity) return [];
+    const out: string[] = [];
+    if (selectedId) out.push(selectedId);
+    if (searchPick) out.push(searchPick);
+    if (fres) out.push(...fres.matches);
+    return out;
+  }, [maxDepth, selectedId, searchPick, fres]);
+  // Označené uzly: skryté shody filtru a hledání se spočítají u viditelného předka.
+  const marks = useMemo(() => [...(fres?.matches ?? []), ...searchIds], [fres, searchIds]);
+  const vis = useMemo(
+    () => (doc && index ? computeVisibility(doc, index, { maxDepth, keep, marks }) : null),
+    [index, maxDepth, keep, marks], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // Souhrn projektu v přehledu: počet aktivních úkolů po termínu (přes kteroukoli cestu).
+  const overdue = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!doc || !index) return m;
+    for (const n of Object.values(doc.nodes)) {
+      if (n.deletedAt || n.type === 'project' || !n.dueDate || n.dueDate >= today) continue;
+      if (n.status === 'done' || n.status === 'cancelled' || n.type === 'milestone') continue;
+      for (const p of projectsOf(doc, n.id, index)) m.set(p, (m.get(p) ?? 0) + 1);
+    }
+    return m;
+  }, [index, today]); // eslint-disable-line react-hooks/exhaustive-deps
   const routed = useMemo(() => (doc && vis ? routeEdges(doc, vis) : []), [vis]); // eslint-disable-line react-hooks/exhaustive-deps
   const conflicts = useMemo(() => (doc ? findDateConflicts(doc) : null), [index]); // eslint-disable-line react-hooks/exhaustive-deps
   const blockers = useMemo(() => (doc ? blockersIndex(doc, today) : null), [index, today]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -166,7 +216,8 @@ export function Canvas() {
         else nextWake = Math.max(nextWake, until);
       }
     }
-    const derived: Derived = { vis, conflicts, blockers };
+    const derived: Derived = { vis, conflicts, blockers, detail: autoDetail ? level : 'full', overdue };
+    const dimmedByFilter = (id: string) => !!fres && !fres.matches.has(id) && !fres.ancestors.has(id);
     setNodes((prevNodes) => {
       const prevById = new Map(prevNodes.map((n) => [n.id, n]));
       const nextCache = new Map<string, CacheEntry>();
@@ -175,23 +226,35 @@ export function Canvas() {
         if (n.deletedAt) continue;
         const shown = vis.visible.has(n.id);
         const vanishing = !shown && vanishUntil.current.has(n.id);
-        if (!shown && !vanishing) continue;
+        const c = cache.current.get(n.id);
+        const prev = prevById.get(n.id);
+        if (!shown && !vanishing) {
+          // Skrytý uzel (sbalení, úroveň detailu) zůstává v React Flow jako `hidden`:
+          // zachová si rozměry i interní údaje, takže se po zobrazení nemusí všechny
+          // uzly znovu vykreslit a měřit – vykreslí se jen ty v záběru.
+          if (prev) {
+            const node = prev.hidden ? prev : { ...prev, hidden: true, selected: false };
+            nextCache.set(n.id, { sig: c?.sig ?? '', selected: false, className: c?.className ?? '', node });
+            out.push(node);
+          }
+          continue;
+        }
         const data = buildData(n, doc, index, today, derived);
         const sig = JSON.stringify(data);
         const selected = n.id === selectedId;
         const className = [
           focusSet && !focusSet.has(n.id) ? 'mm-dim' : '',
+          // Sbalený uzel se skrytými shodami se netlumí – je potřeba ho rozbalit.
+          dimmedByFilter(n.id) && !vis.hiddenMarks.has(n.id) ? 'mm-filtered-out' : '',
           appearUntil.current.has(n.id) ? 'mm-appear' : '',
           vanishing ? 'mm-vanish' : '',
         ]
           .filter(Boolean)
           .join(' ');
-        const c = cache.current.get(n.id);
-        const prev = prevById.get(n.id);
         let node: FlowNode;
         // c.node === prev: mezipaměť musí odpovídat skutečně vykreslenému uzlu
         // (aktualizační funkce může React zavolat dvakrát).
-        if (c && prev && c.node === prev && c.sig === sig && c.selected === selected && c.className === className && prev.position === n.position) {
+        if (c && prev && !prev.hidden && c.node === prev && c.sig === sig && c.selected === selected && c.className === className && prev.position === n.position) {
           node = prev;
         } else {
           node = {
@@ -202,6 +265,8 @@ export function Canvas() {
             draggable: !n.positionLocked && !vanishing,
             className,
             data: c && c.sig === sig ? c.node.data : data,
+            // Rozměry si pamatujeme i pro dočasně skryté uzly (sbalení, úroveň detailu):
+            // React Flow pak vykreslí jen uzly v záběru, místo aby všechny znovu měřil.
             ...(prev?.measured ? { measured: prev.measured } : {}),
           };
         }
@@ -215,7 +280,7 @@ export function Canvas() {
       const t = setTimeout(() => setAnimTick((x) => x + 1), nextWake - now + 10);
       return () => clearTimeout(t);
     }
-  }, [doc, index, vis, conflicts, blockers, selectedId, today, focusSet, animTick]);
+  }, [doc, index, vis, conflicts, blockers, selectedId, today, focusSet, animTick, autoDetail, level, overdue, fres]);
 
   const edges = useMemo<FloatingEdgeType[]>(() => {
     if (!doc || !index || !conflicts) return [];
@@ -237,6 +302,7 @@ export function Canvas() {
       // Barva podle projektu rodiče / blokujícího uzlu; souvislost neutrálně.
       const color = r.kind === 'related' ? 'var(--edge-related)' : projectColor(first.source);
       const touches = !!sel && (r.source === sel || r.target === sel);
+      const out = (id: string) => !!fres && !fres.matches.has(id) && !fres.ancestors.has(id) && !vis?.hiddenMarks.has(id);
       return {
         id: r.id,
         source: r.source,
@@ -259,12 +325,26 @@ export function Canvas() {
           edgeIds: r.edgeIds,
           redirected: r.redirected,
           conflict,
-          dim: !!sel && !touches,
+          dim: (!!sel && !touches) || out(r.source) || out(r.target),
           focus: touches,
         },
       };
     });
-  }, [doc, index, routed, conflicts, focusSet, selectedId]);
+  }, [doc, index, routed, conflicts, focusSet, selectedId, fres, vis]);
+
+  // Úroveň detailu: přepočet jen při překročení prahu (ne při každém posunu).
+  const onMove: OnMove = useCallback((_e, vp) => {
+    const ui = useUiStore.getState();
+    const next = lodLevel(vp.zoom, ui.lodLevel);
+    if (next !== ui.lodLevel) ui.set({ lodLevel: next });
+  }, []);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const ui = useUiStore.getState();
+      ui.set({ lodLevel: lodLevel(rf.getZoom()) });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [rf]);
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
     const relevant = changes.filter((c) => c.type === 'position' || c.type === 'dimensions');
@@ -392,7 +472,8 @@ export function Canvas() {
     const pos = n?.internals.positionAbsolute ?? src!.position;
     const w = n?.measured.width ?? 180;
     const h = n?.measured.height ?? 44;
-    const zoom = Math.max(rf.getZoom(), 0.75);
+    // Výchozí přiblížení 0,75 je nad prahem plného detailu, takže uzel bude vidět.
+    const zoom = focusRequest.zoom !== undefined ? Math.max(rf.getZoom(), focusRequest.zoom) : Math.max(rf.getZoom(), 0.75);
     // Telefon: spodní panel detailu zakrývá dolní část plochy – uzel posuň do horní části.
     let dy = 0;
     if (isMobileNow() && useUiStore.getState().detailOpen) {
@@ -443,6 +524,7 @@ export function Canvas() {
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
         onMoveStart={cancelPress}
+        onMove={onMove}
         onMoveEnd={onMoveEnd}
         defaultViewport={initialViewport}
         fitView={!initialViewport}
@@ -466,7 +548,10 @@ export function Canvas() {
         {gridVisible && <Background variant={BackgroundVariant.Dots} gap={20} size={1.6} color="var(--grid-dot)" />}
         <ZoomControls />
       </ReactFlow>
-      <LinkPickBar />
+      <div className="canvas-bars">
+        <FilterBar />
+        <LinkPickBar />
+      </div>
       <LinkDragLayer />
       <EdgeMenu />
       <LinkTypeMenu />

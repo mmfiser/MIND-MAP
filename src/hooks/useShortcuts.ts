@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { addChildTo, addSiblingTo, deleteWithConfirm } from '../app/actions';
 import { saveToFile } from '../app/fileSync';
 import { cancelLinkPick, toggleCollapse } from '../app/linkActions';
+import { focusSearch } from '../components/toolbar/Search';
 import { useDocStore } from '../store/docStore';
 import { useUiStore } from '../store/uiStore';
 
@@ -19,10 +20,15 @@ export function useShortcuts(): void {
     const onKey = (e: KeyboardEvent) => {
       const ui = useUiStore.getState();
       if (ui.phase !== 'ready') return;
-      const modalOpen = !!(ui.choice || ui.password || ui.picker || ui.notesFor || ui.settingsOpen || ui.trashOpen || ui.subMenu);
+      const modalOpen = !!(ui.choice || ui.password || ui.picker || ui.notesFor || ui.settingsOpen || ui.trashOpen || ui.subMenu || ui.filterOpen || ui.bellOpen);
       const ctrl = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
 
+      if (ctrl && key === 'f' && !modalOpen) {
+        e.preventDefault();
+        focusSearch();
+        return;
+      }
       if (ctrl && key === 's') {
         e.preventDefault();
         if (!modalOpen) void saveToFile(e.shiftKey);
@@ -41,6 +47,11 @@ export function useShortcuts(): void {
         return;
       }
       if (ctrl || e.altKey) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        focusSearch();
+        return;
+      }
 
       const sel = ui.selectedId;
       if (e.key === 'Escape') {

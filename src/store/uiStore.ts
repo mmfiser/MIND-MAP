@@ -1,6 +1,8 @@
 /** Stav rozhraní – mimo historii Zpět/Znovu. */
 import { create } from 'zustand';
 import { todayYmd } from '../model/dates';
+import type { FilterState } from '../model/filters';
+import type { LodLevel } from '../model/lod';
 
 export type Phase = 'loading' | 'setup' | 'locked' | 'ready';
 export type Theme = 'light' | 'dark';
@@ -94,7 +96,7 @@ interface UiState {
   persistStatus: PersistStatus;
   fileName: string;
   /** Požadavek na vystředění uzlu (zpracuje plocha). */
-  focusRequest: { id: string; nonce: number } | null;
+  focusRequest: { id: string; nonce: number; zoom?: number } | null;
   fitRequest: number;
   /** Požadavek na označení pole názvu v detailu (po vytvoření uzlu). */
   editTitleRequest: number;
@@ -113,12 +115,24 @@ interface UiState {
   linkTypeMenu: LinkTypeMenuState | null;
   /** Zvýraznit vazby vybraného uzlu a ztlumit ostatní (pamatuje se). */
   highlightLinks: boolean;
+  /** Fáze 4: automatický detail podle zoomu (pamatuje se) a aktuální úroveň. */
+  autoDetail: boolean;
+  lodLevel: LodLevel;
+  /** Vyhledávání: dotaz (po debounce), otevřené pole na telefonu, kliknutý výsledek. */
+  searchQuery: string;
+  searchOpen: boolean;
+  searchPick: string | null;
+  /** Aktivní filtr (neukládá se) a otevřený panel. */
+  filter: FilterState | null;
+  filterOpen: boolean;
+  bellOpen: boolean;
 
   set(patch: Partial<UiState>): void;
   select(id: string | null, openDetail?: boolean): void;
   toast(text: string, kind?: Toast['kind']): void;
   dismissToast(id: number): void;
-  focusNode(id: string): void;
+  /** Vystředí uzel; `zoom` = přiblížit aspoň na tuto hodnotu (jinak výchozí). */
+  focusNode(id: string, zoom?: number): void;
   fitAll(): void;
 }
 
@@ -182,6 +196,14 @@ export const useUiStore = create<UiState>()((set) => ({
   linkPick: null,
   linkTypeMenu: null,
   highlightLinks: readFlag('mapa-highlight-links', true),
+  autoDetail: readFlag('mapa-auto-detail', true),
+  lodLevel: 'full',
+  searchQuery: '',
+  searchOpen: false,
+  searchPick: null,
+  filter: null,
+  filterOpen: false,
+  bellOpen: false,
 
   set(patch) {
     set(patch);
@@ -197,8 +219,8 @@ export const useUiStore = create<UiState>()((set) => ({
   dismissToast(id) {
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
   },
-  focusNode(id) {
-    set({ focusRequest: { id, nonce: Date.now() } });
+  focusNode(id, zoom) {
+    set({ focusRequest: { id, nonce: Date.now(), zoom } });
   },
   fitAll() {
     set((s) => ({ fitRequest: s.fitRequest + 1 }));

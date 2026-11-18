@@ -14,7 +14,7 @@ import { useUiStore } from '../../store/uiStore';
 import { projectIcon } from '../common/projectIcons';
 import { STATUS_META } from '../common/statusMeta';
 
-function NodeIcon({ n }: { n: MapNode }) {
+export function NodeIcon({ n }: { n: MapNode }) {
   const pi = projectIcon(n.icon);
   const color = n.type === 'project' ? colorHex(n.color) : 'var(--text-2)';
   if (pi) return <pi.Icon size={16} style={{ color, flex: 'none' }} aria-label={pi.label} />;

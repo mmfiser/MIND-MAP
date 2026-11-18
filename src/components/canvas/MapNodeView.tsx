@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import { memo, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
 import { toggleDone } from '../../app/actions';
-import { toggleCollapse } from '../../app/linkActions';
+import { toggleCollapse, zoomIntoNode } from '../../app/linkActions';
+import type { LodLevel } from '../../model/lod';
 import { toast } from '../../store/uiStore';
 import type { DeadlineState } from '../../model/deadline';
 import { plural } from '../../model/progress';
@@ -55,8 +56,16 @@ export interface FlowNodeData extends Record<string, unknown> {
   /** Má poduzly v hierarchii. */
   collapsible: boolean;
   collapsed: boolean;
-  /** Počet uzlů skrytých sbalením. */
+  /** Počet uzlů skrytých sbalením nebo úrovní detailu. */
   hiddenCount: number;
+  /** Poduzly skrývá jen úroveň detailu podle zoomu (ne ruční sbalení). */
+  lodLimited: boolean;
+  /** Počet skrytých shod filtru / hledání pod tímto uzlem. */
+  marks: number;
+  /** Úroveň detailu – při nižší se vykresluje méně textu. */
+  detail: LodLevel;
+  /** Projekt: počet aktivních úkolů po termínu (souhrn v přehledu). */
+  overdue?: number;
 }
 
 export type FlowNode = Node<FlowNodeData, 'mm'>;
@@ -135,7 +144,20 @@ function Tags({ data }: { data: FlowNodeData }) {
   );
 }
 
+/** Nižší úroveň detailu: jen termín, zámek a ⚠. */
+function SimpleChips({ data }: { data: FlowNodeData }) {
+  if (!data.due && !data.blocked && !data.conflicts.length) return null;
+  return (
+    <div className="chips">
+      {data.blocked && <LockBadge text={data.blocked} />}
+      {data.due && <DueBadge due={data.due} state={data.dueState} milestone={data.kind === 'milestone'} />}
+      {data.conflicts.length > 0 && <ConflictBadge conflicts={data.conflicts} />}
+    </div>
+  );
+}
+
 function TaskChips({ data }: { data: FlowNodeData }) {
+  if (data.detail !== 'full') return <SimpleChips data={data} />;
   const st = STATUS_META[data.status];
   const showStatus = data.status === 'in_progress' || data.status === 'waiting' || data.status === 'blocked';
   const any =
@@ -202,8 +224,38 @@ function Connectors({ id }: { id: string }) {
   );
 }
 
+/** Skryté shody filtru / hledání ve sbalené větvi – je potřeba ji rozbalit. */
+function MarksBadge({ count }: { count: number }) {
+  if (!count) return null;
+  const text = `${count} ${count === 1 ? 'shoda' : count < 5 ? 'shody' : 'shod'} ve skryté větvi – rozbalte ji`;
+  return (
+    <span className="marks-badge" title={text} aria-label={text}>
+      {count} ⧉
+    </span>
+  );
+}
+
 function CollapseButton({ id, data }: { id: string; data: FlowNodeData }) {
   if (!data.collapsible) return null;
+  if (!data.collapsed && data.lodLimited) {
+    // Poduzly skrývá jen oddálení – klepnutí přiblíží na úroveň, kde jsou vidět.
+    const label = `Skryto oddálením: ${data.hiddenCount} – klepnutím přiblížíte`;
+    return (
+      <button
+        className="collapse-btn lod nodrag nopan"
+        title={label}
+        aria-label={label}
+        onPointerDown={stop}
+        onDoubleClick={stop}
+        onClick={(e) => {
+          e.stopPropagation();
+          zoomIntoNode(id);
+        }}
+      >
+        +{data.hiddenCount}
+      </button>
+    );
+  }
   const label = data.collapsed ? `Rozbalit větev (skryto ${data.hiddenCount})` : 'Sbalit větev';
   return (
     <button
@@ -278,6 +330,7 @@ function TaskNode({ id, data, selected }: { id: string; data: FlowNodeData; sele
       </div>
       <TaskChips data={data} />
       {data.shared && <SharedBadge />}
+      <MarksBadge count={data.marks} />
       <Connectors id={id} />
       <CollapseButton id={id} data={data} />
     </div>
@@ -289,7 +342,8 @@ function MilestoneNode({ id, data, selected }: { id: string; data: FlowNodeData;
   const style: CSSProperties & Record<string, string | undefined> = {};
   if (data.accent) style['--ms-color'] = data.accent;
   const cls = ['mm-node milestone', data.shared ? 'shared' : '', selected ? 'selected' : '', data.dueState === 'past' ? 'past' : ''].join(' ');
-  const chips = data.due || data.blocked || data.conflicts.length || data.tags.length || data.hasNotes;
+  const full = data.detail === 'full';
+  const chips = data.due || data.blocked || data.conflicts.length || (full && (data.tags.length || data.hasNotes));
   return (
     <div className={cls} style={style}>
       <Handles />
@@ -308,12 +362,13 @@ function MilestoneNode({ id, data, selected }: { id: string; data: FlowNodeData;
             {data.blocked && <LockBadge text={data.blocked} />}
             {data.due && <DueBadge due={data.due} state={data.dueState} milestone />}
             {data.conflicts.length > 0 && <ConflictBadge conflicts={data.conflicts} />}
-            <Tags data={data} />
-            {data.hasNotes && <StickyNote size={13} className="notes-badge" aria-label="Má poznámky" />}
+            {full && <Tags data={data} />}
+            {full && data.hasNotes && <StickyNote size={13} className="notes-badge" aria-label="Má poznámky" />}
           </div>
         ) : null}
       </div>
       {data.shared && <SharedBadge />}
+      <MarksBadge count={data.marks} />
       <Connectors id={id} />
     </div>
   );
@@ -326,7 +381,14 @@ function ProjectNode({ id, data, selected }: { id: string; data: FlowNodeData; s
   };
   if (data.borderColor) style['--node-border'] = data.borderColor;
   const finished = data.status === 'done' || data.status === 'cancelled';
-  const cls = ['mm-node project', data.shared ? 'shared' : '', selected ? 'selected' : '', finished ? 'finished' : ''].join(' ');
+  const cls = [
+    'mm-node project',
+    data.shared ? 'shared' : '',
+    selected ? 'selected' : '',
+    finished ? 'finished' : '',
+    data.detail === 'overview' ? 'lod-overview' : '',
+  ].join(' ');
+  const full = data.detail === 'full';
   const icon = projectIcon(data.icon);
   const p = data.progress;
   const st = STATUS_META[data.status];
@@ -357,17 +419,24 @@ function ProjectNode({ id, data, selected }: { id: string; data: FlowNodeData; s
           </div>
         </div>
       )}
-      {(data.due || data.conflicts.length > 0 || data.priority === 'high' || data.priority === 'critical' || data.tags.length > 0) && (
+      {(data.due || data.conflicts.length > 0 || data.overdue || (full && (data.priority === 'high' || data.priority === 'critical' || data.tags.length > 0))) && (
         <div className="chips">
-          {(data.priority === 'high' || data.priority === 'critical') && (
+          {full && (data.priority === 'high' || data.priority === 'critical') && (
             <span className={`chip prio-${data.priority}`}>{PRIORITY_META[data.priority].label}</span>
           )}
           {data.due && <DueBadge due={data.due} state={data.dueState} />}
+          {data.overdue ? (
+            <InfoBadge className="overdue-count" text={`${data.overdue} ${data.overdue === 1 ? 'úkol je' : data.overdue < 5 ? 'úkoly jsou' : 'úkolů je'} po termínu`}>
+              <TriangleAlert size={12} />
+              {data.overdue}
+            </InfoBadge>
+          ) : null}
           {data.conflicts.length > 0 && <ConflictBadge conflicts={data.conflicts} />}
-          <Tags data={data} />
+          {full && <Tags data={data} />}
         </div>
       )}
       {data.shared && <SharedBadge />}
+      <MarksBadge count={data.marks} />
       <Connectors id={id} />
       <CollapseButton id={id} data={data} />
     </div>

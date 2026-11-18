@@ -10,6 +10,7 @@ import { colorHex } from '../../model/labels';
 import { projectIcon } from '../common/projectIcons';
 import type { MapDocument } from '../../model/types';
 import { useDocStore } from '../../store/docStore';
+import { useFilterResult } from '../../app/viewQueries';
 import { toast, useUiStore } from '../../store/uiStore';
 
 interface DragState {
@@ -42,6 +43,8 @@ interface RowProps {
   pathKey: string;
   ancestors: Set<string>;
   collapsed: Set<string>;
+  /** Aktivní filtr: shody a jejich předci (null = bez filtru). */
+  filter: { matches: Set<string>; ancestors: Set<string> } | null;
   selectedId: string | null;
   drag: DragInfo | null;
   onToggle: (key: string) => void;
@@ -54,9 +57,11 @@ const TreeRow = memo(function TreeRow(p: RowProps) {
   const nextAncestors = useMemo(() => new Set([...p.ancestors, p.nodeId]), [p.ancestors, p.nodeId]);
   const n = p.doc.nodes[p.nodeId];
   if (!n) return null;
-  const kids = p.index.children.get(n.id) ?? [];
+  const allKids = p.index.children.get(n.id) ?? [];
+  // S filtrem jen shody a jejich předci, větve rozbalené.
+  const kids = p.filter ? allKids.filter((e) => p.filter!.matches.has(e.target) || p.filter!.ancestors.has(e.target)) : allKids;
   const shared = (p.index.parents.get(n.id)?.length ?? 0) > 1;
-  const isCollapsed = p.collapsed.has(p.pathKey);
+  const isCollapsed = !p.filter && p.collapsed.has(p.pathKey);
   // Ochrana proti nekonečné rekurzi (cykly by v datech být neměly).
   const cyclic = p.ancestors.has(n.id);
   const dragging = p.drag?.nodeId === n.id && p.drag.fromParentId === p.parentId;
@@ -64,6 +69,7 @@ const TreeRow = memo(function TreeRow(p: RowProps) {
   const cls = [
     'tree-row',
     p.selectedId === n.id ? 'selected' : '',
+    p.filter && !p.filter.matches.has(n.id) ? 'filter-ancestor' : '',
     dragging ? 'dragging' : '',
     isOver ? (p.drag?.valid ? 'drop-target' : 'drop-invalid') : '',
   ].join(' ');
@@ -171,7 +177,12 @@ export function Sidebar() {
   dragRef.current = drag;
 
   const index = useMemo(() => (doc ? buildHierarchyIndex(doc) : null), [doc]);
-  const roots = useMemo(() => (doc && index ? rootNodes(doc, index) : []), [doc, index]);
+  const fres = useFilterResult();
+  const allRoots = useMemo(() => (doc && index ? rootNodes(doc, index) : []), [doc, index]);
+  const roots = useMemo(
+    () => (fres ? allRoots.filter((r) => fres.matches.has(r.id) || fres.ancestors.has(r.id)) : allRoots),
+    [allRoots, fres],
+  );
   const count = useMemo(() => (doc ? Object.values(doc.nodes).filter((n) => !n.deletedAt).length : 0), [doc]);
   const emptySet = useMemo(() => new Set<string>(), []);
   const dragInfo = useMemo<DragInfo | null>(
@@ -359,7 +370,9 @@ export function Sidebar() {
       <nav className="sidebar" aria-label="Rejstřík">
         <div className="sidebar-head">
           <span>Rejstřík</span>
-          <span className="count">{count} uzlů</span>
+          <span className="count">
+            {fres ? `${fres.matches.size} ${fres.matches.size === 1 ? 'shoda' : fres.matches.size >= 2 && fres.matches.size <= 4 ? 'shody' : 'shod'} filtru` : `${count} uzlů`}
+          </span>
           <div style={{ flex: 1 }} />
           <button className="icon-btn" onClick={close} aria-label="Zavřít rejstřík" title="Zavřít rejstřík">
             <X size={18} />
@@ -369,7 +382,7 @@ export function Sidebar() {
           <div className={`tree-root-drop${drag.overKey === 'root' ? ' drop-target' : ''}`}>Pusťte sem pro odpojení od rodiče (volný uzel)</div>
         )}
         <div className="sidebar-body" ref={bodyRef} role="tree">
-          {roots.length === 0 && <div className="muted" style={{ padding: '8px 10px' }}>Zatím žádné projekty.</div>}
+          {roots.length === 0 && <div className="muted" style={{ padding: '8px 10px' }}>{fres ? 'Filtru neodpovídá žádný úkol.' : 'Zatím žádné projekty.'}</div>}
           {roots.map((r) => (
             <TreeRow
               key={r.id}
@@ -381,6 +394,7 @@ export function Sidebar() {
               pathKey={r.id}
               ancestors={emptySet}
               collapsed={collapsed}
+              filter={fres}
               selectedId={selectedId}
               drag={dragInfo}
               onToggle={onToggle}

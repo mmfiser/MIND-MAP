@@ -12,6 +12,8 @@ import { Gate } from './components/Gate';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { TopBar } from './components/toolbar/TopBar';
 import { useBeforeUnload } from './hooks/useBeforeUnload';
+import { BellPanel } from './components/toolbar/Bell';
+import { FilterDialog } from './components/toolbar/Filter';
 import { useShortcuts } from './hooks/useShortcuts';
 import { useDocStore } from './store/docStore';
 import { useUiStore } from './store/uiStore';
@@ -58,6 +60,8 @@ function Workspace() {
         </main>
       </div>
       <NodeContextMenu />
+      <FilterDialog />
+      <BellPanel />
     </ReactFlowProvider>
   );
 }
