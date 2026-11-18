@@ -63,6 +63,17 @@ export function dueSuffix(
   return null;
 }
 
+// ---------- skryté shody ve sbalené větvi ----------
+
+/** Tooltip odznaku: „1 shoda hledání ve sbalené větvi – klikněte pro rozbalení“. */
+export function hiddenMarksText(kind: 'search' | 'filter', n: number): string {
+  const what =
+    kind === 'search'
+      ? `${n} ${n === 1 ? 'shoda' : n >= 2 && n <= 4 ? 'shody' : 'shod'} hledání`
+      : `${n} ${n === 1 ? 'úkol odpovídající' : n >= 2 && n <= 4 ? 'úkoly odpovídající' : 'úkolů odpovídajících'} filtru`;
+  return `${what} ve sbalené větvi – klikněte pro rozbalení`;
+}
+
 // ---------- zvoneček ----------
 
 export const BELL_GROUP_TITLE = {

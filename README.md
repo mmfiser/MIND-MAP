@@ -117,7 +117,7 @@ Schéma dokumentu je ve verzi **4**. Soubory a lokální data ze starších verz
 - Mezi úrovněmi je hystereze ±3 procentní body (nahoru se přepne až při 38 % / 63 %, dolů při 32 % / 57 %), takže uzly na hranici neblikají.
 - Je to jen zobrazení: nemění uložené sbalení ani pozice. Ručně sbalená větev zůstává sbalená i při plném detailu.
 - Skryté uzly používají stejnou logiku jako ruční sbalení (přesměrované a sloučené vazby, „+N“). Klepnutí na „+N“ u uzlu omezeného zoomem přiblíží plochu.
-- Výjimky: vybraný uzel, kliknutý výsledek hledání a shody filtru jsou vidět v každé úrovni (i s cestou k nim). Leží-li ve ručně sbalené větvi, sbalený uzel zůstane neztlumený a dostane odznak počtu shod („3 ⧉“).
+- Výjimky: vybraný uzel, kliknutý výsledek hledání a shody filtru jsou vidět v každé úrovni (i s cestou k nim). Leží-li ve ručně sbalené větvi, sbalený uzel zůstane neztlumený a dostane odznak počtu shod: lupa = shody hledání, trychtýř = shody filtru. Odznak je jen při aktivním filtru nebo neprázdném hledání (vybraný uzel se nepočítá); klik rozbalí větev a vystředí první shodu.
 - Vystředění uzlu (rejstřík, hledání, zvoneček) rozbalí ručně sbalené předky a přiblíží na plný detail.
 - Úroveň je vidět u ovládání zoomu, vypíná se v menu „⋯“ (volba se pamatuje v prohlížeči).
 - Tlačítko **Zoom 80 %** (u ovládání zoomu a v „⋯“) nastaví zoom přesně na 80 % a vystředí plochu na střed všech uzlů mimo koš. Vystředění, Zoom 80 % i úvodní zobrazení počítají se základními rozměry uzlů (×1), takže výsledek nezávisí na výchozím přiblížení.

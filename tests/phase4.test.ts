@@ -103,10 +103,23 @@ describe('úroveň detailu podle zoomu', () => {
     expect(v.visible.has('T111')).toBe(false);
     // cesta ke sbalenému předkovi se ukáže? ne – výjimka vede přes sbalený uzel, takže se nezobrazí nic
     expect(v.visible.has('T1')).toBe(false);
-    expect(v.hiddenMarks.get('P1')).toBe(1);
+    expect(v.hiddenMarks.get('P1')).toEqual({ filter: ['T111'], search: [] });
     // při plném detailu je počet u ručně sbaleného uzlu
     const full = computeVisibility(d, undefined, { marks: ['T111'] });
-    expect(full.hiddenMarks.get('T11')).toBe(1);
+    expect(full.hiddenMarks.get('T11')?.filter).toEqual(['T111']);
+  });
+
+  it('shody jen z filtru a hledání (zvlášť); vybraný uzel ani výjimky se nepočítají', () => {
+    const d = setCollapsed(sample(), ['T11'], true);
+    // jen výjimka (vybraný uzel) – žádný odznak
+    expect(computeVisibility(d, undefined, { keep: ['T111'] }).hiddenMarks.size).toBe(0);
+    // bez aktivního filtru a hledání (prázdné seznamy) – žádný odznak
+    expect(computeVisibility(d, undefined, { keep: ['T111'], marks: [], searchMarks: [] }).hiddenMarks.size).toBe(0);
+    // hledání a filtr zvlášť, v pořadí zadání, bez duplicit
+    const v = computeVisibility(d, undefined, { marks: ['T111'], searchMarks: ['T111', 'T111'] });
+    expect(v.hiddenMarks.get('T11')).toEqual({ filter: ['T111'], search: ['T111'] });
+    // viditelná shoda se nepočítá
+    expect(computeVisibility(d, undefined, { searchMarks: ['T1'] }).hiddenMarks.size).toBe(0);
   });
 
   it('sdílený uzel jako výjimka jde přes rozbalenou větev', () => {

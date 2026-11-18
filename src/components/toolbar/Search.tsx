@@ -109,7 +109,10 @@ export function SearchBox({ mobile }: { mobile: boolean }) {
     setOpen(false);
     ref.current?.blur();
     const ui = useUiStore.getState();
-    ui.set({ searchPick: r.id, ...(mobile ? { searchOpen: false } : {}) });
+    // Na telefonu se řádek hledání zavře – smaž i dotaz, aby na mapě nezůstaly
+    // označené shody neviditelného hledání.
+    if (mobile) setText('');
+    ui.set({ searchPick: r.id, ...(mobile ? { searchOpen: false, searchQuery: '' } : {}) });
     goToNode(r.id);
   };
 

@@ -95,7 +95,8 @@ function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string,
     collapsed: n.collapsed && x.vis.hasChildren.has(n.id),
     hiddenCount: x.vis.hiddenCount.get(n.id) ?? 0,
     lodLimited: x.vis.lodLimited.has(n.id),
-    marks: x.vis.hiddenMarks.get(n.id) ?? 0,
+    filterMarks: x.vis.hiddenMarks.get(n.id)?.filter ?? [],
+    searchMarks: x.vis.hiddenMarks.get(n.id)?.search ?? [],
     detail: x.detail,
   };
   // Souhrn úkolů po termínu jen při nižší úrovni detailu (při plném jsou vidět přímo).
@@ -162,10 +163,11 @@ export function Canvas() {
     return out;
   }, [maxDepth, selectedId, searchPick, fres]);
   // Označené uzly: skryté shody filtru a hledání se spočítají u viditelného předka.
-  const marks = useMemo(() => [...(fres?.matches ?? []), ...searchIds], [fres, searchIds]);
+  // Shody jen při aktivním filtru / neprázdném hledání (výběr ani jiné výjimky se nepočítají).
+  const marks = useMemo(() => (fres ? [...fres.matches] : []), [fres]);
   const vis = useMemo(
-    () => (doc && index ? computeVisibility(doc, index, { maxDepth, keep, marks }) : null),
-    [index, maxDepth, keep, marks], // eslint-disable-line react-hooks/exhaustive-deps
+    () => (doc && index ? computeVisibility(doc, index, { maxDepth, keep, marks, searchMarks: searchIds }) : null),
+    [index, maxDepth, keep, marks, searchIds], // eslint-disable-line react-hooks/exhaustive-deps
   );
   // Souhrn projektu v přehledu: počet aktivních úkolů po termínu (přes kteroukoli cestu).
   const overdue = useMemo(() => {
@@ -252,7 +254,7 @@ export function Canvas() {
         const className = [
           focusSet && !focusSet.has(n.id) ? 'mm-dim' : '',
           // Sbalený uzel se skrytými shodami se netlumí – je potřeba ho rozbalit.
-          dimmedByFilter(n.id) && !vis.hiddenMarks.has(n.id) ? 'mm-filtered-out' : '',
+          dimmedByFilter(n.id) && !vis.hiddenMarks.get(n.id)?.filter.length ? 'mm-filtered-out' : '',
           appearUntil.current.has(n.id) ? 'mm-appear' : '',
           vanishing ? 'mm-vanish' : '',
         ]
@@ -309,7 +311,7 @@ export function Canvas() {
       // Barva podle projektu rodiče / blokujícího uzlu; souvislost neutrálně.
       const color = r.kind === 'related' ? 'var(--edge-related)' : projectColor(first.source);
       const touches = !!sel && (r.source === sel || r.target === sel);
-      const out = (id: string) => !!fres && !fres.matches.has(id) && !fres.ancestors.has(id) && !vis?.hiddenMarks.has(id);
+      const out = (id: string) => !!fres && !fres.matches.has(id) && !fres.ancestors.has(id) && !vis?.hiddenMarks.get(id)?.filter.length;
       return {
         id: r.id,
         source: r.source,

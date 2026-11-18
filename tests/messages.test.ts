@@ -8,6 +8,7 @@ import {
   daysOverdue,
   describeConflict,
   dueSuffix,
+  hiddenMarksText,
   overdueShort,
   dueBeforeStartText,
   overdueText,
@@ -164,5 +165,16 @@ describe('hlášky kolizí', () => {
       'Termín koliduje s: „Projekt B“. Čeká na „Projekt B“ s deadlinem 26. 11., ale vlastní deadline je už 9. 11.',
     );
     expect(conflictToast(d, list, 'A', today, true)).toMatch(/^Termín „Projekt A“ koliduje s: „Projekt B“\. /);
+  });
+});
+
+describe('odznak skrytých shod', () => {
+  it('tooltip s českými tvary čísel', () => {
+    expect(hiddenMarksText('search', 1)).toBe('1 shoda hledání ve sbalené větvi – klikněte pro rozbalení');
+    expect(hiddenMarksText('search', 3)).toBe('3 shody hledání ve sbalené větvi – klikněte pro rozbalení');
+    expect(hiddenMarksText('search', 7)).toBe('7 shod hledání ve sbalené větvi – klikněte pro rozbalení');
+    expect(hiddenMarksText('filter', 1)).toBe('1 úkol odpovídající filtru ve sbalené větvi – klikněte pro rozbalení');
+    expect(hiddenMarksText('filter', 3)).toBe('3 úkoly odpovídající filtru ve sbalené větvi – klikněte pro rozbalení');
+    expect(hiddenMarksText('filter', 12)).toBe('12 úkolů odpovídajících filtru ve sbalené větvi – klikněte pro rozbalení');
   });
 });

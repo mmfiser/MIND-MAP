@@ -4,6 +4,8 @@ import {
   CalendarCheck,
   CalendarClock,
   Check,
+  Filter,
+  Search,
   Link2,
   ListChecks,
   ListTree,
@@ -15,12 +17,12 @@ import {
 } from 'lucide-react';
 import { memo, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
 import { toggleDone } from '../../app/actions';
-import { toggleCollapse, zoomIntoNode } from '../../app/linkActions';
+import { goToNode, toggleCollapse, zoomIntoNode } from '../../app/linkActions';
 import type { LodLevel } from '../../model/lod';
 import { toast } from '../../store/uiStore';
 import type { DeadlineState } from '../../model/deadline';
 import { plural } from '../../model/progress';
-import { overdueShort, pluralDays } from '../../model/messages';
+import { hiddenMarksText, overdueShort, pluralDays } from '../../model/messages';
 import type { NodeType, Priority, Status } from '../../model/types';
 import { projectIcon } from '../common/projectIcons';
 import { PRIORITY_META, STATUS_META } from '../common/statusMeta';
@@ -63,8 +65,9 @@ export interface FlowNodeData extends Record<string, unknown> {
   hiddenCount: number;
   /** Poduzly skrývá jen úroveň detailu podle zoomu (ne ruční sbalení). */
   lodLimited: boolean;
-  /** Počet skrytých shod filtru / hledání pod tímto uzlem. */
-  marks: number;
+  /** Skryté shody filtru / hledání pod tímto uzlem (id, první = cíl kliknutí). */
+  filterMarks: string[];
+  searchMarks: string[];
   /** Úroveň detailu – při nižší se vykresluje méně textu. */
   detail: LodLevel;
   /** Projekt: počet aktivních úkolů po termínu (souhrn v přehledu). */
@@ -237,13 +240,40 @@ function Connectors({ id }: { id: string }) {
   );
 }
 
-/** Skryté shody filtru / hledání ve sbalené větvi – je potřeba ji rozbalit. */
-function MarksBadge({ count }: { count: number }) {
-  if (!count) return null;
-  const text = `${count} ${count === 1 ? 'shoda' : count < 5 ? 'shody' : 'shod'} ve skryté větvi – rozbalte ji`;
+/**
+ * Skryté shody hledání (lupa) / filtru (trychtýř) ve sbalené větvi.
+ * Klik rozbalí ručně sbalené předky první shody a vystředí ji.
+ */
+function MarksBadges({ data }: { data: FlowNodeData }) {
+  const badges = (
+    [
+      ['search', data.searchMarks, Search],
+      ['filter', data.filterMarks, Filter],
+    ] as const
+  ).filter(([, ids]) => ids.length > 0);
+  if (!badges.length) return null;
   return (
-    <span className="marks-badge" title={text} aria-label={text}>
-      {count} ⧉
+    <span className="marks-badges">
+      {badges.map(([kind, ids, Icon]) => {
+        const text = hiddenMarksText(kind, ids.length);
+        return (
+          <button
+            key={kind}
+            className={`marks-badge ${kind} nodrag nopan`}
+            title={text}
+            aria-label={text}
+            onPointerDown={stop}
+            onDoubleClick={stop}
+            onClick={(e) => {
+              e.stopPropagation();
+              goToNode(ids[0]!);
+            }}
+          >
+            <Icon size={13} strokeWidth={2.5} aria-hidden />
+            {ids.length}
+          </button>
+        );
+      })}
     </span>
   );
 }
@@ -343,7 +373,7 @@ function TaskNode({ id, data, selected }: { id: string; data: FlowNodeData; sele
       </div>
       <TaskChips data={data} />
       {data.shared && <SharedBadge />}
-      <MarksBadge count={data.marks} />
+      <MarksBadges data={data} />
       <Connectors id={id} />
       <CollapseButton id={id} data={data} />
     </div>
@@ -381,7 +411,7 @@ function MilestoneNode({ id, data, selected }: { id: string; data: FlowNodeData;
         ) : null}
       </div>
       {data.shared && <SharedBadge />}
-      <MarksBadge count={data.marks} />
+      <MarksBadges data={data} />
       <Connectors id={id} />
     </div>
   );
@@ -449,7 +479,7 @@ function ProjectNode({ id, data, selected }: { id: string; data: FlowNodeData; s
         </div>
       )}
       {data.shared && <SharedBadge />}
-      <MarksBadge count={data.marks} />
+      <MarksBadges data={data} />
       <Connectors id={id} />
       <CollapseButton id={id} data={data} />
     </div>

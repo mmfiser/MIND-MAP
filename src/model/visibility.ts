@@ -18,8 +18,11 @@ export interface VisibilityInfo {
   hasChildren: Set<string>;
   /** viditelné uzly, jejichž poduzly skrývá jen úroveň detailu (ne ruční sbalení) */
   lodLimited: Set<string>;
-  /** viditelný uzel → počet skrytých označených uzlů (shody filtru / hledání) pod ním */
-  hiddenMarks: Map<string, number>;
+  /**
+   * viditelný uzel → skryté shody pod ním (zvlášť filtr a hledání, v pořadí zadání).
+   * Jen z `marks` / `searchMarks` – vybraný uzel ani jiné výjimky (`keep`) se nepočítají.
+   */
+  hiddenMarks: Map<string, HiddenMarks>;
   /** skrytý uzel → nejbližší viditelný předek po nejstarší rodičovské vazbě */
   rep: (id: string) => string;
 }
@@ -32,8 +35,15 @@ export interface VisibilityOptions {
    * kliknutý výsledek hledání, shody filtru). Ruční sbalení má přednost.
    */
   keep?: Iterable<string>;
-  /** Označené uzly (shody filtru a hledání) – skryté se spočítají u viditelného předka. */
+  /** Shody filtru – skryté se spočítají u viditelného předka. */
   marks?: Iterable<string>;
+  /** Shody hledání – skryté se spočítají u viditelného předka. */
+  searchMarks?: Iterable<string>;
+}
+
+export interface HiddenMarks {
+  filter: string[];
+  search: string[];
 }
 
 /**
@@ -168,12 +178,20 @@ export function computeVisibility(data: DocData, index?: HierarchyIndex, opts: V
     return result;
   };
 
-  const hiddenMarks = new Map<string, number>();
-  for (const id of opts.marks ?? []) {
-    if (!live(id) || visible.has(id)) continue;
-    const r = rep(id);
-    hiddenMarks.set(r, (hiddenMarks.get(r) ?? 0) + 1);
-  }
+  const hiddenMarks = new Map<string, HiddenMarks>();
+  const addMarks = (ids: Iterable<string> | undefined, kind: keyof HiddenMarks) => {
+    const seen = new Set<string>();
+    for (const id of ids ?? []) {
+      if (seen.has(id) || !live(id) || visible.has(id)) continue;
+      seen.add(id);
+      const r = rep(id);
+      let m = hiddenMarks.get(r);
+      if (!m) hiddenMarks.set(r, (m = { filter: [], search: [] }));
+      m[kind].push(id);
+    }
+  };
+  addMarks(opts.marks, 'filter');
+  addMarks(opts.searchMarks, 'search');
 
   return { visible, hiddenCount, hasChildren, lodLimited, hiddenMarks, rep };
 }
