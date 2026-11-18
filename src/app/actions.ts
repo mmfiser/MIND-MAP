@@ -9,6 +9,7 @@ import { formatShort, formatWithWeekday, isValidYmd } from '../model/dates';
 import { dueBeforeStart } from '../model/deadline';
 import { activeBlockers, listNames } from '../model/blocking';
 import { newConflictMessage } from './linkActions';
+import { dueBeforeStartText } from '../model/messages';
 import * as H from '../model/hierarchy';
 import { nonWorkingReason, toLastWorkingDayOnOrBefore } from '../model/holidays';
 import { normalizeTag } from '../model/tags';
@@ -334,7 +335,7 @@ export function setDateOf(id: string, field: 'startDate' | 'dueDate', value: str
   }
   // Kontrola až po případném posunu – posun může konflikt vytvořit.
   const next = { startDate: field === 'startDate' ? v : n.startDate, dueDate: field === 'dueDate' ? v : n.dueDate };
-  if (v && dueBeforeStart(next)) messages.push('Termín je dříve než začátek.');
+  if (v && dueBeforeStart(next)) messages.push(dueBeforeStartText({ type: n.type, ...next }, useUiStore.getState().today));
   if (n[field] === v) {
     if (messages.length) toast(messages.join(' '), 'info');
     return;

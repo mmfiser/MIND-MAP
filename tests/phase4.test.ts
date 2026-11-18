@@ -291,7 +291,8 @@ describe('zvoneček', () => {
     ]);
     d = link(d, 'hierarchy', 'P', 'd'); // d (30. 11.) později než deadline projektu → kolize
     const g = bellItems(d, today);
-    expect(g.red.map((i) => i.nodeId)).toEqual(['P', 'b', 'mToday', 'a']) // milník jako střední priorita;
+    expect(g.overdue.map((i) => i.nodeId)).toEqual(['P']);
+    expect(g.today.map((i) => i.nodeId)).toEqual(['b', 'mToday', 'a']); // milník jako střední priorita
     expect(g.orange.map((i) => i.nodeId)).toEqual(['mSoon', 'c']);
     expect(g.conflicts.map((i) => `${i.conflict!.kind}:${i.nodeId}`)).toEqual(['dueBeforeStart:x', 'hierarchy:d']);
     expect(g.conflicts[1]!.reason).toMatch(/později než deadline projektu/);
@@ -301,7 +302,7 @@ describe('zvoneček', () => {
   it('o půlnoci se přepočítá (jiný „dnes“)', () => {
     const d = doc([node('a', 'task', { dueDate: '2026-11-19' })]);
     expect(bellItems(d, '2026-11-18').orange).toHaveLength(1);
-    expect(bellItems(d, '2026-11-19').red.map((i) => i.state)).toEqual(['today']);
-    expect(bellItems(d, '2026-11-20').red.map((i) => i.state)).toEqual(['overdue']);
+    expect(bellItems(d, '2026-11-19').today.map((i) => i.state)).toEqual(['today']);
+    expect(bellItems(d, '2026-11-20').overdue.map((i) => i.state)).toEqual(['overdue']);
   });
 });

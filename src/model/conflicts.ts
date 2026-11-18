@@ -9,7 +9,6 @@
  *
  * Nepočítají se uzly Hotovo, Zrušeno a uzly v koši.
  */
-import { formatShort, type Ymd } from './dates';
 import { dueBeforeStart } from './deadline';
 import type { DocData, MapNode } from './types';
 
@@ -72,29 +71,9 @@ export function findDateConflicts(data: DocData): ConflictReport {
 export const conflictKey = (c: DateConflict): string => `${c.kind}:${c.nodeId}:${c.otherId ?? ''}:${c.edgeId ?? ''}`;
 
 const q = (n: MapNode | undefined) => `„${n?.title.trim() || 'bez názvu'}“`;
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Česky popsaná kolize z pohledu uzlu `viewId`. */
-export function describeConflict(data: DocData, c: DateConflict, viewId: string, today: Ymd): string {
-  const me = data.nodes[c.nodeId];
-  const other = c.otherId ? data.nodes[c.otherId] : undefined;
-  const d = (n: MapNode | undefined) => (n?.dueDate ? formatShort(n.dueDate, today) : '');
-  const what = (n: MapNode | undefined) =>
-    n?.type === 'milestone' ? 'datum milníku' : n?.type === 'project' ? 'deadline projektu' : 'termín';
-  switch (c.kind) {
-    case 'dueBeforeStart':
-      return me?.type === 'project' ? 'Deadline je dříve než datum zahájení.' : 'Termín dokončení je dříve než začátek.';
-    // Data jsou vždy v závorce – formát „20. 11.“ končí tečkou.
-    case 'dependency':
-      return viewId === c.nodeId
-        ? `Čeká na ${q(other)}, ale ${what(me)} je dříve nebo ve stejný den jako ${what(other)} (${d(me)} oproti ${d(other)}).`
-        : `Blokuje ${q(me)}, jehož ${what(me)} je dříve nebo ve stejný den (${d(me)} oproti ${d(other)}).`;
-    case 'hierarchy':
-      return viewId === c.nodeId
-        ? `${cap(what(me))} je později než ${what(other)} ${q(other)} (${d(me)} oproti ${d(other)}).`
-        : `Poduzel ${q(me)} má ${what(me)} později než tento uzel (${d(me)} oproti ${d(other)}).`;
-  }
-}
+/** Texty kolizí jsou v messages.ts (jedno místo pro všechny hlášky). */
+export { describeConflict } from './messages';
 
 /** Názvy druhých uzlů v kolizích (pro oznámení „Termín koliduje s: …“). */
 export function conflictPartners(data: DocData, conflicts: DateConflict[], viewId: string): string[] {

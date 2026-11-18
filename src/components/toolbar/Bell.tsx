@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { goToNode } from '../../app/linkActions';
 import { bellItems, type BellGroups, type BellItem } from '../../model/bell';
 import { formatShort } from '../../model/dates';
+import { BELL_GROUP_TITLE, overdueText, todayText } from '../../model/messages';
 import { owningProject } from '../../model/graph';
 import type { MapDocument } from '../../model/types';
 import { useDocStore } from '../../store/docStore';
@@ -33,7 +34,7 @@ export function BellButton({ className }: { className?: string }) {
     >
       <BellIcon size={19} />
       <span className="tb-label">Upozornění</span>
-      {total > 0 && <span className={`bell-badge${bell!.red.length ? ' red' : ''}`}>{total > 99 ? '99+' : total}</span>}
+      {total > 0 && <span className={`bell-badge${bell!.overdue.length || bell!.today.length ? ' red' : ''}`}>{total > 99 ? '99+' : total}</span>}
     </button>
   );
 }
@@ -50,7 +51,13 @@ function Item({ doc, item, onPick }: { doc: MapDocument; item: BellItem; onPick:
         <span className="name">{n.title.trim() || 'Bez názvu'}</span>
         <span className="sub">
           {project && <span>{project.title.trim() || 'Bez názvu'}</span>}
-          {n.dueDate && <span className={`chip due ${item.state}`}>{formatShort(n.dueDate, today)}</span>}
+          {n.dueDate && (
+            <span className={`chip due ${item.state}`}>
+              {formatShort(n.dueDate, today)}
+              {!item.conflict && item.state === 'overdue' && ` · ${overdueText(n, today)}`}
+              {!item.conflict && item.state === 'today' && ` · ${todayText(n.type)}`}
+            </span>
+          )}
         </span>
         {item.reason && <span className="reason">{item.reason}</span>}
       </span>
@@ -114,9 +121,10 @@ export function BellPanel() {
       </div>
       <div className="bell-body">
         {bell.total === 0 && <div className="muted bell-empty">Nic po termínu ani blížícího se. 👍</div>}
-        <Group title="Po termínu a dnes" tone="red" items={bell.red} doc={doc} onPick={pick} />
-        <Group title="Blíží se" tone="orange" items={bell.orange} doc={doc} onPick={pick} />
-        <Group title="Kolize a upozornění" tone="warn" items={bell.conflicts} doc={doc} onPick={pick} />
+        <Group title={BELL_GROUP_TITLE.overdue} tone="red" items={bell.overdue} doc={doc} onPick={pick} />
+        <Group title={BELL_GROUP_TITLE.today} tone="red" items={bell.today} doc={doc} onPick={pick} />
+        <Group title={BELL_GROUP_TITLE.soon} tone="orange" items={bell.orange} doc={doc} onPick={pick} />
+        <Group title={BELL_GROUP_TITLE.conflicts} tone="warn" items={bell.conflicts} doc={doc} onPick={pick} />
       </div>
     </Panel>
   );

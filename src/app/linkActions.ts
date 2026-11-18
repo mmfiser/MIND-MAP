@@ -2,7 +2,8 @@
  * Fáze 3: akce nad vazbami, milníky a sbalováním. Logiku dělají čisté funkce v model/.
  */
 import { listNames } from '../model/blocking';
-import { conflictKey, conflictPartners, findDateConflicts } from '../model/conflicts';
+import { conflictKey, findDateConflicts } from '../model/conflicts';
+import { conflictToast } from '../model/messages';
 import { createNode } from '../model/factory';
 import { buildHierarchyIndex, childEdges, parentEdges } from '../model/graph';
 import * as H from '../model/hierarchy';
@@ -25,16 +26,13 @@ export function newConflictMessage(before: DocData, after: DocData, ids: string[
     (c) => c.kind !== 'dueBeforeStart' && !old.has(conflictKey(c)) && (ids.includes(c.nodeId) || (c.otherId && ids.includes(c.otherId))),
   );
   if (!fresh.length) return null;
-  if (ids.length === 1) {
-    // Změna termínu jednoho uzlu: „Termín koliduje s: „A“, „B“.“
-    return `Termín koliduje s: ${conflictPartners(after, fresh, ids[0]!).join(', ')}.`;
-  }
+  const today = useUiStore.getState().today;
+  // Změna termínu jednoho uzlu: „Termín koliduje s: „A“. <popis z pohledu uzlu>“
+  if (ids.length === 1) return conflictToast(after, fresh, ids[0]!, today);
   // Nová / změněná vazba: z pohledu blokovaného uzlu / poduzlu.
   const byNode = new Map<string, typeof fresh>();
   for (const c of fresh) byNode.set(c.nodeId, [...(byNode.get(c.nodeId) ?? []), c]);
-  return [...byNode]
-    .map(([id, list]) => `Termín ${nodeName(after, id)} koliduje s: ${conflictPartners(after, list, id).join(', ')}.`)
-    .join(' ');
+  return [...byNode].map(([id, list]) => conflictToast(after, list, id, today, true)).join(' ');
 }
 
 /** Provede operaci a ohlásí nově vzniklé kolize termínů. */

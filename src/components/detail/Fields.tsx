@@ -1,4 +1,4 @@
-import { GripVertical, Plus, Search, Trash2, TriangleAlert, X } from 'lucide-react';
+import { GripVertical, Plus, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   addChecklistItem,
@@ -18,7 +18,6 @@ import { suggestTags, usedTags } from '../../model/tags';
 import type { MapNode } from '../../model/types';
 import { useDocStore } from '../../store/docStore';
 import { filterIconGroups, projectIcon } from '../common/projectIcons';
-import { dueBeforeStart } from '../../model/deadline';
 import { PRIORITY_META, PRIORITY_ORDER, STATUS_META, STATUS_ORDER } from '../common/statusMeta';
 
 export function StatusSelect({ node }: { node: MapNode }) {
@@ -315,19 +314,6 @@ export function ChecklistEditor({ node }: { node: MapNode }) {
           />
         </div>
       </div>
-    </div>
-  );
-}
-
-/** Trvalá hláška v detailu, dokud je termín dříve než začátek. */
-export function DateConflictHint({ node }: { node: MapNode }) {
-  if (!dueBeforeStart(node)) return null;
-  return (
-    <div className="date-warning" role="status">
-      <TriangleAlert size={16} />
-      <span>
-        {node.type === 'project' ? 'Deadline je dříve než datum zahájení.' : 'Termín dokončení je dříve než začátek.'}
-      </span>
     </div>
   );
 }

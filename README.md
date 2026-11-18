@@ -135,7 +135,8 @@ Schéma dokumentu je ve verzi **4**. Soubory a lokální data ze starších verz
 
 ### Zvoneček
 - Odznak s počtem položek: červený, je-li aspoň jedna červená položka, jinak oranžový.
-- Skupiny: **Po termínu a dnes**, **Blíží se** (1–3 pracovní dny), **Kolize a upozornění**. Bez hotových, zrušených, smazaných uzlů a uplynulých milníků.
+- Skupiny: **Po termínu** (s počtem kalendářních dní, např. „9 dní po termínu“), **Termín dnes** („Milník dnes“ u milníku), **Blíží se** (1–3 pracovní dny), **Kolize termínů**.
+- Hlášky kolizí vždy uvádějí oba uzly a obě data (deadline u projektu, termín u úkolu, datum u milníku). Stejné texty jsou v ⚠ na uzlu, v detailu i v oznámení; všechny jsou v `src/model/messages.ts`. Bez hotových, zrušených, smazaných uzlů a uplynulých milníků.
 - Řazení podle termínu, při shodě podle priority. Klik vystředí uzel a otevře detail. Přepočítá se při změně dat a o půlnoci.
 - Jen v otevřené aplikaci, žádné systémové notifikace.
 
