@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { todayYmd } from '../model/dates';
 import type { FilterState } from '../model/filters';
 import type { LodLevel } from '../model/lod';
+import { NO_SCALE, type NodeScale } from '../model/nodeScale';
 
 export type Phase = 'loading' | 'setup' | 'locked' | 'ready';
 export type Theme = 'light' | 'dark';
@@ -118,6 +119,9 @@ interface UiState {
   /** Fáze 4: automatický detail podle zoomu (pamatuje se) a aktuální úroveň. */
   autoDetail: boolean;
   lodLevel: LodLevel;
+  /** Kompenzace zoomu: zvětšovat uzly při oddálení (pamatuje se) a aktuální faktory. */
+  scaleNodes: boolean;
+  nodeScale: NodeScale;
   /** Vyhledávání: dotaz (po debounce), otevřené pole na telefonu, kliknutý výsledek. */
   searchQuery: string;
   searchOpen: boolean;
@@ -198,6 +202,8 @@ export const useUiStore = create<UiState>()((set) => ({
   highlightLinks: readFlag('mapa-highlight-links', true),
   autoDetail: readFlag('mapa-auto-detail', true),
   lodLevel: 'full',
+  scaleNodes: readFlag('mapa-scale-nodes', true),
+  nodeScale: NO_SCALE,
   searchQuery: '',
   searchOpen: false,
   searchPick: null,

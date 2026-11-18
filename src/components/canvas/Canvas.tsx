@@ -13,13 +13,14 @@ import {
   type OnMoveEnd,
   type Viewport,
 } from '@xyflow/react';
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { GRID, canvasApi, commitPositions, createProject } from '../../app/actions';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { GRID, NODE_SIZE, canvasApi, commitPositions, createProject } from '../../app/actions';
 import { blockedText, handlePickTarget } from '../../app/linkActions';
 import { blockersIndex } from '../../model/blocking';
 import { describeConflict, findDateConflicts, type ConflictReport } from '../../model/conflicts';
 import { computeVisibility, routeEdges, type VisibilityInfo } from '../../model/visibility';
 import { LOD_MAX_DEPTH, lodLevel, type LodLevel } from '../../model/lod';
+import { nodeScaleFactors, overlapCaps, type KindRect, type NodeScale } from '../../model/nodeScale';
 import { projectsOf } from '../../model/filters';
 import { filterResult, searchResult } from '../../app/viewQueries';
 import { getSettings, updateSettings } from '../../app/session';
@@ -132,6 +133,8 @@ export function Canvas() {
   const filter = useUiStore((s) => s.filter);
   const searchQuery = useUiStore((s) => s.searchQuery);
   const searchPick = useUiStore((s) => s.searchPick);
+  const scaleNodes = useUiStore((s) => s.scaleNodes);
+  const nodeScale = useUiStore((s) => s.nodeScale);
   const rf = useReactFlow<FlowNode, Edge>();
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -334,12 +337,69 @@ export function Canvas() {
     });
   }, [doc, index, routed, conflicts, focusSet, selectedId, fres, vis]);
 
-  // Úroveň detailu: přepočet jen při překročení prahu (ne při každém posunu).
-  const onMove: OnMove = useCallback((_e, vp) => {
+  // Kompenzace zoomu – strop proti překrývání projektů v Přehledu (pozice se neposouvají).
+  const scaleLevel: LodLevel = autoDetail ? level : lodLevel(rf.getZoom());
+  // Strop proti překrývání viditelných uzlů (pozice se neposouvají). Počítá se až po
+  // vykreslení – React Flow má pak aktuální rozměry (v Přehledu mají projekty vyšší písmo).
+  // Přepočet při změně dat, úrovně nebo rozměrů, ne při každém pohybu při tažení.
+  const [measureTick, setMeasureTick] = useState(0);
+  const [projectCap, setProjectCap] = useState<{ node: number; projectFor: (fn: number) => number }>(() => ({
+    node: Infinity,
+    projectFor: () => Infinity,
+  }));
+  useEffect(() => {
+    if (!scaleNodes || !doc || !vis || scaleLevel === 'full') {
+      setProjectCap({ node: Infinity, projectFor: () => Infinity });
+      return;
+    }
+    const rects: KindRect[] = [];
+    for (const id of vis.visible) {
+      const n = doc.nodes[id];
+      if (!n) continue;
+      const internal = rf.getInternalNode(id);
+      // Vykreslený uzel: skutečné rozměry z DOM (bez CSS scale); mimo záběr poslední známé.
+      const el = wrapRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
+      const size = NODE_SIZE[n.type];
+      const w = el?.offsetWidth || internal?.measured.width || size.w;
+      const h = el?.offsetHeight || internal?.measured.height || size.h;
+      const p = n.position;
+      rects.push({ cx: p.x + w / 2, cy: p.y + h / 2, w, h, kind: n.type === 'project' ? 'project' : 'node' });
+    }
+    // Mezera v souřadnicích plochy: v Přehledu větší (při zoomu 0,1 ≈ 6 px na obrazovce).
+    setProjectCap(overlapCaps(rects, scaleLevel === 'overview' ? 60 : 16));
+  }, [scaleNodes, doc, vis, scaleLevel, measureTick, rf]);
+  const capRef = useRef(projectCap);
+  capRef.current = projectCap;
+
+  /** Faktory zvětšení pro zoom (kvantované po 0,1 – mění se jen při změně kroku). */
+  const scaleFor = useCallback((zoom: number, lvl: LodLevel): NodeScale => {
     const ui = useUiStore.getState();
-    const next = lodLevel(vp.zoom, ui.lodLevel);
-    if (next !== ui.lodLevel) ui.set({ lodLevel: next });
+    if (!ui.scaleNodes) return { project: 1, node: 1 };
+    // Bez automatického detailu se úroveň pro zvětšení řídí jen zoomem.
+    const l = ui.autoDetail ? lvl : lodLevel(zoom);
+    const caps = capRef.current;
+    const f = nodeScaleFactors(zoom, l, { overviewText: ui.autoDetail && l === 'overview', nodeCap: caps.node });
+    return { node: f.node, project: Math.max(1, Math.min(f.project, caps.projectFor(f.node))) };
   }, []);
+
+  // Úroveň detailu a zvětšení: přepočet jen při překročení prahu / kroku (ne při každém posunu).
+  const onMove: OnMove = useCallback(
+    (_e, vp) => {
+      const ui = useUiStore.getState();
+      const next = lodLevel(vp.zoom, ui.lodLevel);
+      const s = scaleFor(vp.zoom, next);
+      const patch: { lodLevel?: LodLevel; nodeScale?: NodeScale } = {};
+      if (next !== ui.lodLevel) patch.lodLevel = next;
+      if (s.project !== ui.nodeScale.project || s.node !== ui.nodeScale.node) patch.nodeScale = s;
+      if (patch.lodLevel || patch.nodeScale) ui.set(patch);
+    },
+    [scaleFor],
+  );
+  useEffect(() => {
+    const ui = useUiStore.getState();
+    const s = scaleFor(rf.getZoom(), ui.lodLevel);
+    if (s.project !== ui.nodeScale.project || s.node !== ui.nodeScale.node) ui.set({ nodeScale: s });
+  }, [scaleFor, rf, projectCap, scaleNodes, autoDetail, level]);
   useEffect(() => {
     const t = setTimeout(() => {
       const ui = useUiStore.getState();
@@ -350,6 +410,7 @@ export function Canvas() {
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
     const relevant = changes.filter((c) => c.type === 'position' || c.type === 'dimensions');
+    if (changes.some((c) => c.type === 'dimensions')) setMeasureTick((t) => t + 1);
     if (relevant.length) setNodes((ns) => applyNodeChanges(relevant, ns));
   }, []);
 
@@ -504,6 +565,7 @@ export function Canvas() {
   return (
     <div
       className={`canvas-wrap${picking ? ' picking' : ''}`}
+      style={{ '--s-project': nodeScale.project, '--s-node': nodeScale.node } as CSSProperties}
       ref={wrapRef}
       onDoubleClick={onDoubleClick}
       onPointerDown={onPointerDown}

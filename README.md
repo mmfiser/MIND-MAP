@@ -121,6 +121,13 @@ Schéma dokumentu je ve verzi **4**. Soubory a lokální data ze starších verz
 - Vystředění uzlu (rejstřík, hledání, zvoneček) rozbalí ručně sbalené předky a přiblíží na plný detail.
 - Úroveň je vidět u ovládání zoomu, vypíná se v menu „⋯“ (volba se pamatuje v prohlížeči).
 
+### Zvětšování uzlů při oddálení (kompenzace zoomu)
+- Uzly viditelné v aktuální úrovni se při oddálení zvětšují kolem svého středu (pozice v datech se nemění), aby měl název projektu na obrazovce aspoň ~14 px, název úkolu ~12 px a ikona ~16 px.
+- Stropy: Přehled – projekty ×3 (uzly bez rodiče ×1,6); Projekty a úkoly – projekty ×2, úkoly a milníky ×1,6; Vše – ×1.
+- Navíc dynamický strop proti překrývání: uzly se zvětší jen tak, aby se nepřekryly (mezera 60 px plochy v Přehledu, 16 px ve Střední úrovni). Při výchozím rozložení (podúkol 70 px vedle rodiče, sourozenci 16 px pod sebou) to ve Střední úrovni znamená zhruba ×1,1 pro projekty a ×1,4 pro úkoly.
+- Faktor se kvantuje po 0,1 a mění se jen při změně kroku; přechod je plynulý (150 ms), při `prefers-reduced-motion` bez animace.
+- Vazby se uchycují na zvětšený obrys. Vypíná se v „⋯“ → „Zvětšovat uzly při oddálení“ (pamatuje se v prohlížeči); bez automatického detailu se řídí jen zoomem.
+
 ### Vyhledávání
 - Notebook: pole v horní liště, **Ctrl+F** nebo **/**. Telefon: lupa otevře pole přes celou lištu.
 - Hledá v názvech, štítcích, poznámkách a checklistu bez ohledu na diakritiku a velikost písmen; uzly v koši ne.

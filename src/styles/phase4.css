@@ -603,3 +603,17 @@ button.chip.due {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* --- Kompenzace zoomu: zvětšení uzlu kolem středu (faktory nastavuje plocha) --- */
+.react-flow__node > .mm-node {
+  scale: var(--s-node, 1);
+  transition: box-shadow 0.12s, outline-color 0.12s, scale 150ms ease-out;
+}
+.react-flow__node > .mm-node.project {
+  scale: var(--s-project, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node > .mm-node {
+    transition: none;
+  }
+}

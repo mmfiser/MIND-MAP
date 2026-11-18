@@ -1,6 +1,7 @@
 import { BaseEdge, EdgeLabelRenderer, useInternalNode, useReactFlow, type Edge, type EdgeProps } from '@xyflow/react';
 import { memo, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import { floatingEdgeGeometry } from '../../model/edgeGeometry';
+import { scaleRect } from '../../model/nodeScale';
 import type { EdgeKind } from '../../model/types';
 import { useUiStore } from '../../store/uiStore';
 import { startLinkDrag } from './LinkDrag';
@@ -41,6 +42,11 @@ function FloatingEdgeImpl({ id, source, target, markerEnd, data, interactionWidt
   const s = useInternalNode(source);
   const t = useInternalNode(target);
   const selected = useUiStore((st) => st.selectedEdge === id);
+  // Kompenzace zoomu: uzly jsou zvětšené kolem středu (CSS scale) – vazba se
+  // uchytí na zvětšený obrys, ne na původní rozměry.
+  const scale = useUiStore((st) => st.nodeScale);
+  const fs = (s?.data as { kind?: string } | undefined)?.kind === 'project' ? scale.project : scale.node;
+  const ft = (t?.data as { kind?: string } | undefined)?.kind === 'project' ? scale.project : scale.node;
   const rf = useReactFlow();
 
   const sx = s?.internals.positionAbsolute.x;
@@ -57,8 +63,13 @@ function FloatingEdgeImpl({ id, source, target, markerEnd, data, interactionWidt
     if (sx === undefined || sy === undefined || !sw || !sh || tx === undefined || ty === undefined || !tw || !th) {
       return null;
     }
-    return floatingEdgeGeometry({ x: sx, y: sy, width: sw, height: sh }, { x: tx, y: ty, width: tw, height: th }, 0.25, bend);
-  }, [sx, sy, sw, sh, tx, ty, tw, th, bend]);
+    return floatingEdgeGeometry(
+      scaleRect({ x: sx, y: sy, width: sw, height: sh }, fs),
+      scaleRect({ x: tx, y: ty, width: tw, height: th }, ft),
+      0.25,
+      bend,
+    );
+  }, [sx, sy, sw, sh, tx, ty, tw, th, bend, fs, ft]);
 
   if (!geo || !data) return null;
   const count = data.edgeIds.length;

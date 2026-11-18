@@ -22,6 +22,7 @@ import {
   Undo2,
   UnfoldVertical,
   ZoomIn,
+  Scaling,
   Search as SearchIcon,
   Filter as FilterIcon,
 } from 'lucide-react';
@@ -79,6 +80,7 @@ export function TopBar() {
   const theme = useUiStore((s) => s.theme);
   const highlightLinks = useUiStore((s) => s.highlightLinks);
   const autoDetail = useUiStore((s) => s.autoDetail);
+  const scaleNodes = useUiStore((s) => s.scaleNodes);
   const picking = useUiStore((s) => !!s.linkPick);
   const fileName = useUiStore((s) => s.fileName);
   const searchOpen = useUiStore((s) => s.searchOpen);
@@ -123,12 +125,23 @@ export function TopBar() {
     ui().set({ autoDetail: v });
     writeFlag('mapa-auto-detail', v);
   };
+  const toggleScaleNodes = () => {
+    const v = !ui().scaleNodes;
+    ui().set({ scaleNodes: v });
+    writeFlag('mapa-scale-nodes', v);
+  };
   const viewEntries: MenuEntry[] = [
     {
       key: 'autoDetail',
       label: autoDetail ? 'Automatický detail podle zoomu ✓' : 'Automatický detail podle zoomu',
       icon: <ZoomIn size={18} />,
       onSelect: toggleAutoDetail,
+    },
+    {
+      key: 'scaleNodes',
+      label: scaleNodes ? 'Zvětšovat uzly při oddálení ✓' : 'Zvětšovat uzly při oddálení',
+      icon: <Scaling size={18} />,
+      onSelect: toggleScaleNodes,
     },
     { key: 'collapseAll', label: 'Sbalit vše na projekty', icon: <FoldVertical size={18} />, onSelect: collapseAll },
     { key: 'expandAll', label: 'Rozbalit vše', icon: <UnfoldVertical size={18} />, onSelect: expandEverything },
