@@ -21,6 +21,7 @@ import { describeConflict, findDateConflicts, type ConflictReport } from '../../
 import { computeVisibility, routeEdges, type VisibilityInfo } from '../../model/visibility';
 import { LOD_MAX_DEPTH, lodLevel, type LodLevel } from '../../model/lod';
 import { nodeScaleFactors, overlapCaps, type KindRect, type NodeScale } from '../../model/nodeScale';
+import { fitViewport, nodeCenter, zoomPresetViewport } from '../../model/viewport';
 import { projectsOf } from '../../model/filters';
 import { filterResult, searchResult } from '../../app/viewQueries';
 import { getSettings, updateSettings } from '../../app/session';
@@ -125,6 +126,7 @@ export function Canvas() {
   const theme = useUiStore((s) => s.theme);
   const focusRequest = useUiStore((s) => s.focusRequest);
   const fitRequest = useUiStore((s) => s.fitRequest);
+  const zoomPresetRequest = useUiStore((s) => s.zoomPresetRequest);
   const today = useUiStore((s) => s.today);
   const highlightLinks = useUiStore((s) => s.highlightLinks);
   const picking = useUiStore((s) => !!s.linkPick);
@@ -529,12 +531,10 @@ export function Canvas() {
   // --- vystředění uzlu / zobrazení všeho ---
   useEffect(() => {
     if (!focusRequest) return;
-    const n = rf.getInternalNode(focusRequest.id);
     const src = useDocStore.getState().doc?.nodes[focusRequest.id];
-    if (!n && !src) return;
-    const pos = n?.internals.positionAbsolute ?? src!.position;
-    const w = n?.measured.width ?? 180;
-    const h = n?.measured.height ?? 44;
+    if (!src) return;
+    // Základní rozměry (×1): výsledek nezávisí na zvětšení uzlů ani na úrovni detailu.
+    const c = nodeCenter(src);
     // Výchozí přiblížení 0,75 je nad prahem plného detailu, takže uzel bude vidět.
     const zoom = focusRequest.zoom !== undefined ? Math.max(rf.getZoom(), focusRequest.zoom) : Math.max(rf.getZoom(), 0.75);
     // Telefon: spodní panel detailu zakrývá dolní část plochy – uzel posuň do horní části.
@@ -543,15 +543,36 @@ export function Canvas() {
       const ch = wrapRef.current?.clientHeight ?? window.innerHeight;
       dy = (ch * 0.28) / zoom;
     }
-    void rf.setCenter(pos.x + w / 2, pos.y + h / 2 + dy, { zoom, duration: reducedMotion() ? 0 : 350 });
+    void rf.setCenter(c.x, c.y + dy, { zoom, duration: reducedMotion() ? 0 : 350 });
   }, [focusRequest, rf]);
 
+  // Úvodní zobrazení / po otevření souboru: celá mapa podle základních rozměrů uzlů
+  // (ne podle aktuálně vykreslených a zvětšených – ty závisí na zoomu).
+  const viewSize = () => ({ w: wrapRef.current?.clientWidth ?? window.innerWidth, h: wrapRef.current?.clientHeight ?? window.innerHeight });
   useEffect(() => {
     if (!fitRequest) return;
-    // počkej na vykreslení (např. po otevření souboru)
-    const t = setTimeout(() => void rf.fitView({ padding: 0.2, maxZoom: 1.2, duration: reducedMotion() ? 0 : 350 }), 60);
+    const t = setTimeout(() => {
+      const d = useDocStore.getState().doc;
+      if (!d) return;
+      const { w, h } = viewSize();
+      void rf.setViewport(fitViewport(d, w, h, { minZoom: 0.1, maxZoom: 1.2 }), { duration: reducedMotion() ? 0 : 350 });
+    }, 60);
     return () => clearTimeout(t);
   }, [fitRequest, rf]);
+
+  // „Zoom 80 %“: přesně 0,8, vystředěno na střed všech uzlů mimo koš.
+  useEffect(() => {
+    if (!zoomPresetRequest) return;
+    const d = useDocStore.getState().doc;
+    if (!d) return;
+    const { w, h } = viewSize();
+    void rf.setViewport(zoomPresetViewport(d, w, h), { duration: reducedMotion() ? 0 : 350 });
+  }, [zoomPresetRequest, rf]);
+
+  // Bez uloženého pohledu: úvodní zobrazení celé mapy (stejný výpočet jako po otevření souboru).
+  useEffect(() => {
+    if (!getSettings().viewport) useUiStore.getState().fitAll();
+  }, []);
 
   // --- uložení viewportu ---
   const vpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -591,8 +612,6 @@ export function Canvas() {
         onMove={onMove}
         onMoveEnd={onMoveEnd}
         defaultViewport={initialViewport}
-        fitView={!initialViewport}
-        fitViewOptions={{ padding: 0.2, maxZoom: 1.2 }}
         colorMode={theme}
         minZoom={0.1}
         maxZoom={2.5}

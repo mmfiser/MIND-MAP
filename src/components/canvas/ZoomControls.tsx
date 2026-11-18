@@ -1,5 +1,5 @@
 import { useReactFlow, useStore } from '@xyflow/react';
-import { Crosshair, Maximize, Minus, Plus } from 'lucide-react';
+import { Crosshair, Minus, Plus, ZoomIn } from 'lucide-react';
 import { useUiStore } from '../../store/uiStore';
 import { LOD_LABEL } from '../../model/lod';
 
@@ -40,7 +40,7 @@ export function ZoomControls() {
         </span>
       )}
       <button
-        className="icon-btn"
+        className="icon-btn focus-selected"
         title="Vystředit vybraný (F)"
         aria-label="Vystředit vybraný"
         disabled={!selectedId}
@@ -48,8 +48,14 @@ export function ZoomControls() {
       >
         <Crosshair size={18} />
       </button>
-      <button className="icon-btn" title="Zobrazit vše" aria-label="Zobrazit vše" onClick={() => ui().fitAll()}>
-        <Maximize size={18} />
+      <button
+        className="icon-btn zoom-preset"
+        title="Zoom 80 % – vystředit na celou mapu"
+        aria-label="Zoom 80 %, vystředit na celou mapu"
+        onClick={() => ui().zoomPreset()}
+      >
+        <ZoomIn size={17} />
+        <span>80 %</span>
       </button>
     </div>
   );

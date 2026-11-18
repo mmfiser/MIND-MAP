@@ -99,6 +99,8 @@ interface UiState {
   /** Požadavek na vystředění uzlu (zpracuje plocha). */
   focusRequest: { id: string; nonce: number; zoom?: number } | null;
   fitRequest: number;
+  /** Požadavek „Zoom 80 %“ (zpracuje plocha). */
+  zoomPresetRequest: number;
   /** Požadavek na označení pole názvu v detailu (po vytvoření uzlu). */
   editTitleRequest: number;
   /** Nová verze aplikace je připravená – stačí obnovit stránku. */
@@ -138,6 +140,7 @@ interface UiState {
   /** Vystředí uzel; `zoom` = přiblížit aspoň na tuto hodnotu (jinak výchozí). */
   focusNode(id: string, zoom?: number): void;
   fitAll(): void;
+  zoomPreset(): void;
 }
 
 let toastSeq = 1;
@@ -190,6 +193,7 @@ export const useUiStore = create<UiState>()((set) => ({
   fileName: 'mapa',
   focusRequest: null,
   fitRequest: 0,
+  zoomPresetRequest: 0,
   editTitleRequest: 0,
   updateReady: false,
   today: todayYmd(),
@@ -230,6 +234,9 @@ export const useUiStore = create<UiState>()((set) => ({
   },
   fitAll() {
     set((s) => ({ fitRequest: s.fitRequest + 1 }));
+  },
+  zoomPreset() {
+    set((s) => ({ zoomPresetRequest: s.zoomPresetRequest + 1 }));
   },
 }));
 

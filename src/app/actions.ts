@@ -3,6 +3,7 @@
  * zkratkami, rejstříkem i detailem. Logiku dělají čisté funkce v model/.
  */
 import { DEFAULT_PROJECT_COLOR, PROJECT_PALETTE } from '../model/labels';
+import { BASE_NODE_SIZE } from '../model/viewport';
 import { createNode } from '../model/factory';
 import { buildHierarchyIndex, childEdges, parentEdges } from '../model/graph';
 import { formatShort, formatWithWeekday, isValidYmd } from '../model/dates';
@@ -20,11 +21,8 @@ import { useDocStore, type ApplyOptions } from '../store/docStore';
 import { choose, confirmDialog, toast, useUiStore } from '../store/uiStore';
 
 export const GRID = 10;
-export const NODE_SIZE: Record<NodeType, { w: number; h: number }> = {
-  project: { w: 260, h: 110 },
-  task: { w: 190, h: 64 },
-  milestone: { w: 160, h: 44 },
-};
+/** Základní rozměry uzlů (×1) – stejné jako pro vystředění a ohraničení. */
+export const NODE_SIZE: Record<NodeType, { w: number; h: number }> = BASE_NODE_SIZE;
 
 /** Pomocník pro plochu – nastavuje Canvas (střed viditelné oblasti v souřadnicích plochy). */
 export const canvasApi: { viewCenter: () => Position } = {

@@ -131,6 +131,7 @@ export function TopBar() {
     writeFlag('mapa-scale-nodes', v);
   };
   const viewEntries: MenuEntry[] = [
+    { key: 'zoom80', label: 'Zoom 80 % (celá mapa uprostřed)', icon: <ZoomIn size={18} />, onSelect: () => ui().zoomPreset() },
     {
       key: 'autoDetail',
       label: autoDetail ? 'Automatický detail podle zoomu ✓' : 'Automatický detail podle zoomu',

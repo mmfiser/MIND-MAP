@@ -617,3 +617,38 @@ button.chip.due {
     transition: none;
   }
 }
+
+/* --- Tlačítko „Zoom 80 %“ v ovládání zoomu --- */
+.zoom-ctrl .icon-btn.zoom-preset {
+  width: auto;
+  padding: 0 8px;
+  gap: 4px;
+  font: 600 12.5px/1 var(--font);
+  white-space: nowrap;
+}
+/* Úzký telefon (320–420 px): ovládání zoomu se musí vejít; úroveň detailu nad ním. */
+@media (max-width: 420px) {
+  .zoom-ctrl {
+    gap: 2px;
+  }
+  .zoom-ctrl input[type='range'] {
+    width: 64px;
+  }
+  .zoom-ctrl .pct {
+    min-width: 36px;
+  }
+  .zoom-ctrl .focus-selected {
+    display: none;
+  }
+  .zoom-ctrl .icon-btn.zoom-preset {
+    padding: 0 6px;
+  }
+  .zoom-ctrl .lod-label {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
+  }
+}

@@ -120,6 +120,7 @@ Schéma dokumentu je ve verzi **4**. Soubory a lokální data ze starších verz
 - Výjimky: vybraný uzel, kliknutý výsledek hledání a shody filtru jsou vidět v každé úrovni (i s cestou k nim). Leží-li ve ručně sbalené větvi, sbalený uzel zůstane neztlumený a dostane odznak počtu shod („3 ⧉“).
 - Vystředění uzlu (rejstřík, hledání, zvoneček) rozbalí ručně sbalené předky a přiblíží na plný detail.
 - Úroveň je vidět u ovládání zoomu, vypíná se v menu „⋯“ (volba se pamatuje v prohlížeči).
+- Tlačítko **Zoom 80 %** (u ovládání zoomu a v „⋯“) nastaví zoom přesně na 80 % a vystředí plochu na střed všech uzlů mimo koš. Vystředění, Zoom 80 % i úvodní zobrazení počítají se základními rozměry uzlů (×1), takže výsledek nezávisí na výchozím přiblížení.
 
 ### Zvětšování uzlů při oddálení (kompenzace zoomu)
 - Uzly viditelné v aktuální úrovni se při oddálení zvětšují kolem svého středu (pozice v datech se nemění), aby měl název projektu na obrazovce aspoň ~14 px, název úkolu ~12 px a ikona ~16 px.
