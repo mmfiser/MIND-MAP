@@ -25,6 +25,7 @@ import { filterResult, searchResult } from '../../app/viewQueries';
 import { getSettings, updateSettings } from '../../app/session';
 import { formatShort } from '../../model/dates';
 import { deadlineState } from '../../model/deadline';
+import { daysOverdue } from '../../model/messages';
 import { buildHierarchyIndex, owningProject, type HierarchyIndex } from '../../model/graph';
 import { checklistProgress, projectProgress, subtaskProgress } from '../../model/progress';
 import { colorHex, contrastText } from '../../model/labels';
@@ -103,6 +104,7 @@ function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string,
     data.accent = p ? colorHex(p.color) : undefined;
   }
   if (n.dueDate) data.due = formatShort(n.dueDate, today);
+  if (n.dueDate && data.dueState === 'overdue') data.overdueDays = daysOverdue(n.dueDate, today);
   if (n.type === 'project') {
     const p = projectProgress(d, n.id, index);
     data.progress = { percent: p.percent, open: p.open, done: p.done };

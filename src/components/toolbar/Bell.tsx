@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { goToNode } from '../../app/linkActions';
 import { bellItems, type BellGroups, type BellItem } from '../../model/bell';
 import { formatShort } from '../../model/dates';
-import { BELL_GROUP_TITLE, overdueText, todayText } from '../../model/messages';
+import { BELL_GROUP_TITLE, dueSuffix } from '../../model/messages';
 import { owningProject } from '../../model/graph';
 import type { MapDocument } from '../../model/types';
 import { useDocStore } from '../../store/docStore';
@@ -54,8 +54,7 @@ function Item({ doc, item, onPick }: { doc: MapDocument; item: BellItem; onPick:
           {n.dueDate && (
             <span className={`chip due ${item.state}`}>
               {formatShort(n.dueDate, today)}
-              {!item.conflict && item.state === 'overdue' && ` · ${overdueText(n, today)}`}
-              {!item.conflict && item.state === 'today' && ` · ${todayText(n.type)}`}
+              {!item.conflict && dueSuffix(n, item.state, today) && ` · ${dueSuffix(n, item.state, today)}`}
             </span>
           )}
         </span>

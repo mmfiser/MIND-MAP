@@ -20,6 +20,7 @@ import type { LodLevel } from '../../model/lod';
 import { toast } from '../../store/uiStore';
 import type { DeadlineState } from '../../model/deadline';
 import { plural } from '../../model/progress';
+import { overdueShort, pluralDays } from '../../model/messages';
 import type { NodeType, Priority, Status } from '../../model/types';
 import { projectIcon } from '../common/projectIcons';
 import { PRIORITY_META, STATUS_META } from '../common/statusMeta';
@@ -41,6 +42,8 @@ export interface FlowNodeData extends Record<string, unknown> {
   icon?: string;
   /** Termín / deadline v českém formátu + stav zvýraznění. */
   due?: string;
+  /** Počet kalendářních dní po termínu (jen ve stavu overdue). */
+  overdueDays?: number;
   dueState: DeadlineState;
   /** Projekt: procento (null = „–“), počty. */
   progress?: { percent: number | null; open: number; done: number };
@@ -107,7 +110,17 @@ function LockBadge({ text }: { text: string }) {
   );
 }
 
-function DueBadge({ due, state, milestone }: { due: string; state: DeadlineState; milestone?: boolean }) {
+function DueBadge({ due, state, milestone, overdueDays }: { due: string; state: DeadlineState; milestone?: boolean; overdueDays?: number }) {
+  if (state === 'overdue' && overdueDays) {
+    // Málo místa: krátký tvar „16. 11. · −2 d“, plný text v tooltipu a po klepnutí.
+    const full = `Termín ${due} – ${pluralDays(overdueDays)} po termínu`;
+    return (
+      <InfoBadge className={`due ${state}`} text={full}>
+        <CalendarClock size={12} />
+        {due} · {overdueShort(overdueDays)}
+      </InfoBadge>
+    );
+  }
   const title = milestone
     ? state === 'past'
       ? 'Datum milníku uplynulo'
@@ -150,7 +163,7 @@ function SimpleChips({ data }: { data: FlowNodeData }) {
   return (
     <div className="chips">
       {data.blocked && <LockBadge text={data.blocked} />}
-      {data.due && <DueBadge due={data.due} state={data.dueState} milestone={data.kind === 'milestone'} />}
+      {data.due && <DueBadge due={data.due} state={data.dueState} milestone={data.kind === 'milestone'} overdueDays={data.overdueDays} />}
       {data.conflicts.length > 0 && <ConflictBadge conflicts={data.conflicts} />}
     </div>
   );
@@ -181,7 +194,7 @@ function TaskChips({ data }: { data: FlowNodeData }) {
           {st.label}
         </span>
       )}
-      {data.due && <DueBadge due={data.due} state={data.dueState} />}
+      {data.due && <DueBadge due={data.due} state={data.dueState} overdueDays={data.overdueDays} />}
       {data.conflicts.length > 0 && <ConflictBadge conflicts={data.conflicts} />}
       {data.subtasks && (
         <span className="chip" title="Hotové přímé podúkoly">
@@ -424,7 +437,7 @@ function ProjectNode({ id, data, selected }: { id: string; data: FlowNodeData; s
           {full && (data.priority === 'high' || data.priority === 'critical') && (
             <span className={`chip prio-${data.priority}`}>{PRIORITY_META[data.priority].label}</span>
           )}
-          {data.due && <DueBadge due={data.due} state={data.dueState} />}
+          {data.due && <DueBadge due={data.due} state={data.dueState} overdueDays={data.overdueDays} />}
           {data.overdue ? (
             <InfoBadge className="overdue-count" text={`${data.overdue} ${data.overdue === 1 ? 'úkol je' : data.overdue < 5 ? 'úkoly jsou' : 'úkolů je'} po termínu`}>
               <TriangleAlert size={12} />

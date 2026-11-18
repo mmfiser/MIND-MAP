@@ -7,6 +7,8 @@ import {
   conflictToast,
   daysOverdue,
   describeConflict,
+  dueSuffix,
+  overdueShort,
   dueBeforeStartText,
   overdueText,
   pluralDays,
@@ -52,6 +54,19 @@ describe('počet dní po termínu', () => {
     expect(overdueText({ type: 'task', dueDate: '2026-11-09' }, today)).toBe('9 dní po termínu');
     expect(overdueText({ type: 'task', dueDate: '2026-11-16' }, today)).toBe('2 dny po termínu');
     expect(overdueText({ type: 'project', dueDate: '2026-11-17' }, today)).toBe('1 den po deadlinu');
+  });
+});
+
+describe('odznak s datem: plný a krátký tvar', () => {
+  it('plný tvar (zvoneček, detail) a krátký tvar (uzel)', () => {
+    const task = { type: 'task' as const, dueDate: '2026-11-06' };
+    expect(dueSuffix(task, 'overdue', today)).toBe('12 dní po termínu');
+    expect(dueSuffix(task, 'overdue', today, true)).toBe('−2 d'.replace('2', '12'));
+    expect(overdueShort(2)).toBe('−2 d');
+    expect(dueSuffix({ type: 'project', dueDate: today }, 'today', today)).toBe('Deadline dnes');
+    expect(dueSuffix({ type: 'milestone', dueDate: today }, 'today', today)).toBe('Milník dnes');
+    expect(dueSuffix({ type: 'milestone', dueDate: today }, 'today', today, true)).toBeNull(); // na uzlu stačí zvýraznění
+    expect(dueSuffix({ type: 'task', dueDate: '2026-11-20' }, 'soon', today)).toBeNull();
   });
 });
 

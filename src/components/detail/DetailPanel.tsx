@@ -8,7 +8,7 @@ import {
   toggleDone,
   updateNodeFields,
 } from '../../app/actions';
-import { ChecklistEditor, DateField, IconPicker, PrioritySelect, StatusSelect, TagInput } from './Fields';
+import { ChecklistEditor, DateField, DueStatus, IconPicker, PrioritySelect, StatusSelect, TagInput } from './Fields';
 import { BlockedHint, ConflictHints, LinksSection } from './LinksSection';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { parentEdges } from '../../model/graph';
@@ -154,6 +154,7 @@ function DetailContent({ node }: { node: MapNode }) {
           <DateField node={node} field="dueDate" label={node.type === 'project' ? 'Deadline' : 'Termín dokončení'} />
         </div>
       )}
+      <DueStatus node={node} />
       <ConflictHints node={node} />
       <BlockedHint node={node} />
       <div className="meta-row">

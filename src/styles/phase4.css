@@ -566,3 +566,40 @@
   border-radius: 20px;
   font-size: 22px;
 }
+
+/* --- Odznaky s datem se nikdy neořezávají (uzel, zvoneček, detail, hledání) --- */
+.chip.due {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  flex: none;
+}
+button.chip.due {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+@media (pointer: coarse) {
+  button.chip.due {
+    position: relative;
+  }
+  button.chip.due::before {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
+}
+.due-status {
+  display: flex;
+  margin-top: -6px;
+}
+.due-status .chip {
+  height: 24px;
+  font-size: 12.5px;
+}
+/* Zvoneček a hledání: projekt a odznak se při nedostatku místa zalomí na další řádek */
+.bell-text .sub > span:not(.chip),
+.search-text .sub > span:not(.chip) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

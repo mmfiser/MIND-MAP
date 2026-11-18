@@ -1,4 +1,8 @@
 import { GripVertical, Plus, Search, Trash2, X } from 'lucide-react';
+import { useUiStore } from '../../store/uiStore';
+import { deadlineState } from '../../model/deadline';
+import { dueSuffix } from '../../model/messages';
+import { formatShort } from '../../model/dates';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   addChecklistItem,
@@ -78,6 +82,22 @@ export function DateField({ node, field, label }: { node: MapNode; field: 'start
         )}
       </div>
     </label>
+  );
+}
+
+/** Stav termínu v detailu – plný tvar: „16. 11. · 2 dny po termínu“, „18. 11. · Milník dnes“. */
+export function DueStatus({ node }: { node: MapNode }) {
+  const today = useUiStore((s) => s.today);
+  if (!node.dueDate) return null;
+  const state = deadlineState(node.dueDate, today, node.status, node.type);
+  const suffix = dueSuffix(node, state, today);
+  if (!suffix) return null;
+  return (
+    <div className="due-status">
+      <span className={`chip due ${state}`}>
+        {formatShort(node.dueDate, today)} · {suffix}
+      </span>
+    </div>
   );
 }
 

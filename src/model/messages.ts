@@ -41,6 +41,28 @@ export function overdueText(n: Pick<MapNode, 'type' | 'dueDate'>, today: Ymd): s
   return `${pluralDays(days)} ${n.type === 'project' ? 'po deadlinu' : 'po termínu'}`;
 }
 
+/** Krátký tvar na uzel (málo místa): „−2 d“ (typografické minus). */
+export function overdueShort(days: number): string {
+  return `\u2212${days} d`;
+}
+
+/**
+ * Text odznaku s datem. Plný tvar (zvoneček, detail): „16. 11. · 2 dny po termínu“,
+ * „18. 11. · Milník dnes“. Krátký tvar (uzel): „16. 11. · −2 d“.
+ * Vrací jen příponu za datem (bez „ · “), nebo null.
+ */
+export function dueSuffix(
+  n: Pick<MapNode, 'type' | 'dueDate'>,
+  state: 'none' | 'soon' | 'today' | 'overdue' | 'past',
+  today: Ymd,
+  short = false,
+): string | null {
+  if (!n.dueDate) return null;
+  if (state === 'overdue') return short ? overdueShort(daysOverdue(n.dueDate, today)) : overdueText(n, today);
+  if (state === 'today' && !short) return todayText(n.type);
+  return null;
+}
+
 // ---------- zvoneček ----------
 
 export const BELL_GROUP_TITLE = {
