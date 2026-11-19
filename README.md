@@ -2,9 +2,12 @@
 
 Myšlenková mapa a správa projektů a úkolů pro jednoho uživatele. Jde o statickou webovou aplikaci bez serveru a bez databáze: data zůstávají v zařízení, vždy zašifrovaná. Mezi zařízeními se přenášejí šifrovaným souborem (např. přes OneDrive).
 
-Aktuální stav: **fáze 2**.
+Aktuální stav: **dokončeno (fáze 1–5)**. Návod pro uživatele je v [NAVOD.md](NAVOD.md).
 - **Fáze 1:** plocha, uzly, hierarchie včetně sdílených uzlů, rejstřík, detail, Zpět/Znovu, šifrované ukládání, offline.
-- **Fáze 2:** stavy a priority, datumy se zvýrazněním termínů, procenta projektů, checklist, štítky, ikony projektů, koš.
+- **Fáze 2:** stavy a priority, datumy se zvýrazněním termínů, procenta projektů, checklist, štítky, ikony, koš.
+- **Fáze 3:** závislosti a souvislosti, milníky, sbalování větví, kolize termínů.
+- **Fáze 4:** automatický detail podle zoomu, zvětšování uzlů při oddálení, vyhledávání, filtry, zvoneček, výběr více uzlů.
+- **Fáze 5:** zamykání pozic, automatické uspořádání větví, minimapa, kruhový ovladač posunu, nápověda, O aplikaci, uvítání, výkonový test.
 
 ## Projektová logika (fáze 2)
 
@@ -154,6 +157,51 @@ Schéma dokumentu je ve verzi **4**. Soubory a lokální data ze starších verz
 - **Smazání:** Delete s potvrzením „Smazat N uzlů?“ – v koši jedna položka, jeden krok Zpět.
 - **Panel a kontextová nabídka** nad výběrem: Stav, Priorita, Označit jako hotové, Smazat. Stav a priorita se týkají jen úkolů; projekty a milníky se přeskočí a aplikace řekne kolik.
 
+## Komfort ovládání (fáze 5)
+
+### Zamykání pozic
+- **Globální zámek** (zámek v horní liště, Shift+P): žádný uzel nejde přesunout tažením; posun plochy, výběr, nabídky a vazby fungují. Pamatuje se v prohlížeči; výchozí stav je na dotykovém zařízení zapnuto, na notebooku vypnuto.
+- **Zámek uzlu** (nabídka uzlu, hromadné akce, klávesa P) se ukládá do `positionLocked`; uzel má špendlík. Zamčené uzly se nepřesunou tažením, šipkami, hromadným přesunem ani uspořádáním.
+- Pokus o přesun zamčeného uzlu ukáže krátké oznámení (u globálního zámku jednou za sezení s tlačítkem „Odemknout“).
+
+### Uspořádat větev
+- Nabídka uzlu („Uspořádat větev doprava / dolů“), hromadné akce, klávesa **L** (poslední směr). Kořen zůstane na místě.
+- Knihovna `@dagrejs/dagre` (součást buildu); větve nad 300 uzlů se počítají ve Web Workeru.
+- Základní rozměry uzlů (×1), rozestupy bez překryvů. Zamčený uzel zůstane a jeho podvětev se uspořádá kolem něj. Sdílený uzel se umístí jen tehdy, když jsou všichni jeho rodiče ve větvi. Sbalená podvětev je jeden uzel.
+- Překrývala-li by se větev s okolím, posune se celá uspořádaná část (okolí se nehýbe) a aplikace to oznámí. Přesun je animovaný, jeden krok Zpět a jedno uložení.
+
+### Minimapa a kruhový ovladač
+- **Minimapa** (vpravo dole, přepínač v „⋯“): kreslí se přes `<canvas>`, uzly v barvách projektů, projekty výrazněji, ztlumení filtrem, obdélník výřezu; klik / tažení posune plochu. Vždy ukazuje všechny projekty. Výchozí: notebook zapnuto, telefon vypnuto.
+- **Kruhový ovladač** (jen dotyková zařízení, výchozí vpravo dole, strana a zapnutí v „⋯“): klepnutí na šipku = posun o třetinu obrazovky, tažení palcem = plynulý posun všemi směry, střed = vystředit vybraný uzel (jinak střed projektů). Na telefonu jsou ovladač a minimapa na opačných stranách nad lištou zoomu; při otevřeném spodním panelu se schovají.
+
+### Nápověda, O aplikaci, uvítání
+- **Nápověda** (klávesa **?**, „⋯“): zkratky, gesta, barvy termínů, ikony a čáry vazeb.
+- **O aplikaci** („⋯“): verze, datum sestavení, stav trvalého úložiště, kontrola aktualizace.
+- Po vytvoření hesla se jednou ukáže krátké uvítání (OneDrive, heslo nejde obnovit, nápověda pod „?“).
+- Animace jsou sjednocené na 120–200 ms (`src/components/common/motion.ts`), vše respektuje `prefers-reduced-motion`.
+
+## Výkon (1 000 uzlů)
+
+Vývojový nástroj – **není součástí nasazení** (`scripts/perf/`, výstup v `scripts/perf/out/` je v `.gitignore`, `puppeteer-core` jen v devDependencies):
+
+```bash
+npm run perf:generate   # zašifrovaný testovací soubor s 1 000 uzly (heslo v scripts/perf/generate.ts)
+npm run perf:measure    # produkční build + měření v Chrome: emulace Androidu, CPU 4× zpomalené
+```
+
+Výsledky (Android 393×851, CPU 4× zpomalené, 1 000 uzlů, 15 projektů, hloubka 5, 1 145 vazeb):
+
+| Akce | Výsledek |
+| --- | --- |
+| Načtení a dešifrování souboru | ≈ 2,4–2,6 s (většinu tvoří záměrně pomalé odvození klíče z hesla) |
+| Posun plochy | ≈ 48 snímků/s |
+| Zoom kolečkem přes všechny úrovně | ≈ 58 snímků/s |
+| Přechod úrovně detailu | 110–175 ms |
+| Sbalení větve (55 uzlů) | ≈ 180 ms |
+| Vyhledávání (od posledního znaku k výsledkům) | ≈ 300–370 ms (z toho 150 ms záměrná pauza po dopsání) |
+| Filtr | ≈ 180–350 ms |
+| Uložení do souboru (728 kB) | ≈ 200–280 ms |
+
 ## Spuštění
 
 Je potřeba Node.js 20 nebo novější.
@@ -192,6 +240,13 @@ Nasaďte proto aplikaci na origin, kde nic jiného neběží:
 - **vlastní doménu / subdoménu** (např. `mapa.example.cz`) nastavenou v GitHub Pages.
 
 Pokud už na originu běží jiné stránky, berte to jako bezpečnostní riziko.
+
+### Jak vydat novou verzi
+1. Změny ověřte lokálně: `npm test` a `npm run build` (bez varování).
+2. Commit a push do `main` – workflow spustí testy, build a nasazení (cca 1–2 minuty).
+3. Číslo verze (čas sestavení + zkrácený hash commitu) je v aplikaci v „⋯“ → O aplikaci.
+4. Otevřené aplikace si novou verzi stáhnou samy: na zamykací obrazovce se hned obnoví, při práci ukážou lištu „Je k dispozici nová verze“. Ručně: O aplikaci → Zkontrolovat aktualizaci.
+5. Mění-li se formát dat, zvyšte `SCHEMA_VERSION` a přidejte migraci (`src/model/migrations.ts`) s testem; starší verze aplikace pak novější soubor odmítne s návodem k aktualizaci.
 
 ## Formát souboru `.mapa`
 
@@ -242,27 +297,35 @@ Na notebooku se před přepsáním souboru (Uložit) zkontroluje, zda ho mezití
 ## Struktura
 
 ```
-src/model/       čisté funkce: typy, hierarchie, vazby, viditelnost (sbalení), kolize termínů, koš, migrace, verze
+src/model/       čisté funkce: typy, hierarchie, vazby, viditelnost a úroveň detailu, kolize termínů,
+                 hledání, filtry, zvoneček, hromadné akce, zámky, uspořádání (dagre), minimapa, ovladač, texty, migrace
 src/crypto/      obálka AES-GCM + PBKDF2, klíče sezení
-src/storage/     IndexedDB (Dexie), šifrovaný trezor, autosave, soubory (FSA / share / download)
-src/store/       Zustand – dokument + Zpět/Znovu, stav UI
-src/app/         akce nad uzly, životní cyklus (heslo, zámek), ukládání a otevírání souborů
-src/components/  plocha (React Flow), lišta, rejstřík, detail, dialogy
-tests/           Vitest – hierarchie, šifrování, migrace, rozhodování o verzích
+src/storage/     IndexedDB (Dexie), šifrovaný trezor, autosave, soubory (výběr souboru / sdílení / stažení)
+src/store/       Zustand – dokument + Zpět/Znovu, stav rozhraní
+src/app/         akce (uzly, vazby, výběr, zámky, uspořádání + Web Worker), životní cyklus, soubory, aktualizace
+src/components/  plocha (React Flow, minimapa, ovladač), lišta, rejstřík, detail, dialogy (nápověda, o aplikaci)
+tests/           Vitest – model, šifrování, migrace, verze, texty, kontrast barev
+scripts/perf/    vývojový výkonový test (není součástí nasazení)
 ```
 
 ## Klávesové zkratky
+
+Zkratky nereagují při psaní do textových polí. Přehled je i v aplikaci pod „?“.
 
 | Klávesa | Akce |
 | --- | --- |
 | Tab | nový podúkol |
 | Enter | nový sourozenec |
-| Delete | smazat (s potvrzením) |
-| F | vystředit vybraný |
-| Ctrl+F nebo / | hledat |
+| Delete | smazat vybrané (do koše, s potvrzením) |
 | Mezerník | sbalit / rozbalit větev vybraného uzlu |
+| F | vystředit vybraný uzel |
+| L | uspořádat větev (poslední zvolený směr) |
+| P | zamknout / odemknout pozici vybraných uzlů |
+| Shift+P | globální zámek pozic |
+| Šipky (Shift = větší krok) | posun vybraných uzlů |
+| Ctrl+klik / Shift+tažení / Ctrl+A | výběr více uzlů |
+| Ctrl+F nebo / | hledat |
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | zpět / znovu |
 | Ctrl+S / Ctrl+Shift+S | uložit / uložit jako |
 | Esc | zrušit výběr, režim Propojit, zavřít nabídku či dialog |
-| Ctrl+klik / Shift+tažení / Ctrl+A | výběr více uzlů |
-| Šipky (Shift = větší krok) | posun vybraných uzlů |
+| ? | nápověda |

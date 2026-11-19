@@ -63,6 +63,11 @@ export function dueSuffix(
   return null;
 }
 
+/** „3 vazby“ / „5 vazeb“ (sloučené vazby do sbalené větve). */
+export function linksCount(n: number): string {
+  return `${n} ${n === 1 ? 'vazba' : n >= 2 && n <= 4 ? 'vazby' : 'vazeb'}`;
+}
+
 // ---------- skryté shody ve sbalené větvi ----------
 
 /** Tooltip odznaku: „1 shoda hledání ve sbalené větvi – klikněte pro rozbalení“. */

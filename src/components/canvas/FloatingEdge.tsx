@@ -2,6 +2,7 @@ import { BaseEdge, EdgeLabelRenderer, useInternalNode, useReactFlow, type Edge, 
 import { memo, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import { floatingEdgeGeometry } from '../../model/edgeGeometry';
 import { scaleRect } from '../../model/nodeScale';
+import { linksCount } from '../../model/messages';
 import type { EdgeKind } from '../../model/types';
 import { useUiStore } from '../../store/uiStore';
 import { startLinkDrag } from './LinkDrag';
@@ -117,8 +118,8 @@ function FloatingEdgeImpl({ id, source, target, markerEnd, data, interactionWidt
           <button
             className="edge-count nodrag nopan"
             style={{ transform: `translate(-50%, -50%) translate(${geo.mid.x}px, ${geo.mid.y}px)`, borderColor: stroke, opacity: data.dim ? 0.3 : 1 }}
-            title={`${count} vazby do sbalené větve – klepnutím zobrazíte seznam`}
-            aria-label={`${count} sloučených vazeb`}
+            title={`${linksCount(count)} do sbalené větve – klepnutím zobrazíte seznam`}
+            aria-label={`Sloučené vazby: ${count}`}
             onClick={(e) => {
               e.stopPropagation();
               useUiStore.getState().set({

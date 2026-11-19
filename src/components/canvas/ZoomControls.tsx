@@ -2,6 +2,7 @@ import { useReactFlow, useStore } from '@xyflow/react';
 import { Crosshair, Minus, Plus, ZoomIn } from 'lucide-react';
 import { useUiStore } from '../../store/uiStore';
 import { LOD_LABEL } from '../../model/lod';
+import { MOTION, motion } from '../common/motion';
 
 const MIN = 0.1;
 const MAX = 2.5;
@@ -19,7 +20,7 @@ export function ZoomControls() {
 
   return (
     <div className="zoom-ctrl" onDoubleClick={(e) => e.stopPropagation()}>
-      <button className="icon-btn" title="Oddálit" aria-label="Oddálit" onClick={() => void rf.zoomOut({ duration: 150 })}>
+      <button className="icon-btn" title="Oddálit" aria-label="Oddálit" onClick={() => void rf.zoomOut({ duration: motion(MOTION.base) })}>
         <Minus size={18} />
       </button>
       <input
@@ -30,7 +31,7 @@ export function ZoomControls() {
         aria-label="Přiblížení"
         onChange={(e) => void rf.zoomTo(fromSlider(Number(e.target.value)))}
       />
-      <button className="icon-btn" title="Přiblížit" aria-label="Přiblížit" onClick={() => void rf.zoomIn({ duration: 150 })}>
+      <button className="icon-btn" title="Přiblížit" aria-label="Přiblížit" onClick={() => void rf.zoomIn({ duration: motion(MOTION.base) })}>
         <Plus size={18} />
       </button>
       <span className="pct">{Math.round(zoom * 100)} %</span>

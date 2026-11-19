@@ -4,6 +4,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { arrowStep, clampToRadius, joystickVelocity, JOYSTICK, type ArrowDir } from '../../model/joystick';
 import { nodeCenter, nodesBounds } from '../../model/viewport';
 import { useDocStore } from '../../store/docStore';
+import { MOTION, motion } from '../common/motion';
 import { useUiStore } from '../../store/uiStore';
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -31,13 +32,13 @@ export function Joystick({ viewW, viewH }: { viewW: number; viewH: number }) {
     const n = sel ? doc.nodes[sel] : undefined;
     if (n && !n.deletedAt) {
       const c = nodeCenter(n);
-      void rf.setCenter(c.x, c.y, { zoom: rf.getZoom(), duration: reducedMotion() ? 0 : 200 });
+      void rf.setCenter(c.x, c.y, { zoom: rf.getZoom(), duration: motion(MOTION.move) });
       return;
     }
     // Bez výběru: střed všech projektů.
     const projects = { nodes: Object.fromEntries(Object.entries(doc.nodes).filter(([, p]) => p.type === 'project')), edges: {} };
     const b = nodesBounds(projects) ?? nodesBounds(doc);
-    if (b) void rf.setCenter(b.x + b.width / 2, b.y + b.height / 2, { zoom: rf.getZoom(), duration: reducedMotion() ? 0 : 200 });
+    if (b) void rf.setCenter(b.x + b.width / 2, b.y + b.height / 2, { zoom: rf.getZoom(), duration: motion(MOTION.move) });
   };
 
   const loop = () => {
@@ -101,7 +102,7 @@ export function Joystick({ viewW, viewH }: { viewW: number; viewH: number }) {
       if (s.dir === 'center') centerAction();
       else if (s.dir) {
         const { dx, dy } = arrowStep(s.dir as ArrowDir, viewW, viewH);
-        panBy(dx, dy, 220);
+        panBy(dx, dy, MOTION.move);
       }
     }
     state.current = null;

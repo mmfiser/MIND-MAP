@@ -13,6 +13,7 @@ import {
   startReconnectPick,
 } from '../../app/linkActions';
 import { detachFrom } from '../../app/actions';
+import { linksCount } from '../../model/messages';
 import { parentEdges } from '../../model/graph';
 import { useDocStore } from '../../store/docStore';
 import { toast, useUiStore } from '../../store/uiStore';
@@ -34,7 +35,7 @@ export function EdgeMenu() {
 
   if (edges.length > 1) {
     entries = [
-      { title: `${edges.length} vazby do sbalené větve` },
+      { title: `${linksCount(edges.length)} do sbalené větve` },
       ...edges.map((e) => {
         const hidden = isVisible(e.target) ? e.source : e.target;
         return {

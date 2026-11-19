@@ -43,6 +43,7 @@ import { MapNodeView, type FlowNode, type FlowNodeData } from './MapNodeView';
 import { ZoomControls } from './ZoomControls';
 import { FilterBar } from '../toolbar/Filter';
 import { MultiSelectBar } from './MultiSelect';
+import { MOTION, motion } from '../common/motion';
 import { Minimap } from './Minimap';
 import { Joystick } from './Joystick';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -55,7 +56,7 @@ const LONG_PRESS_MS = 550;
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const coarsePointer = () => window.matchMedia('(pointer: coarse)').matches;
 /** Délka animace sbalení / rozbalení (prolnutí). */
-const FADE_MS = 160;
+const FADE_MS = MOTION.base;
 
 const MAX_TAGS_ON_NODE = 2;
 
@@ -65,7 +66,11 @@ interface CacheEntry {
   selected: boolean;
   className: string;
   node: FlowNode;
+  /** Vstupy, ze kterých vznikla data uzlu – při shodě se data nepřepočítávají. */
+  inputs?: unknown[];
 }
+
+const sameInputs = (a: unknown[] | undefined, b: unknown[]) => !!a && a.length === b.length && a.every((v, i) => v === b[i]);
 
 interface Derived {
   vis: VisibilityInfo;
@@ -262,13 +267,31 @@ export function Canvas() {
           // uzly znovu vykreslit a měřit – vykreslí se jen ty v záběru.
           if (prev) {
             const node = prev.hidden ? prev : { ...prev, hidden: true, selected: false };
-            nextCache.set(n.id, { sig: c?.sig ?? '', selected: false, className: c?.className ?? '', node });
+            nextCache.set(n.id, { sig: c?.sig ?? '', selected: false, className: c?.className ?? '', node, inputs: c?.inputs });
             out.push(node);
           }
           continue;
         }
-        const data = buildData(n, doc, index, today, derived);
-        const sig = JSON.stringify(data);
+        // Data uzlu se počítají znovu jen při změně jeho vstupů. Změny jen v zobrazení
+        // (hledání, filtr, výběr, zvýraznění vazeb) tak nepřepočítávají všech 1 000 uzlů.
+        const marks = vis.hiddenMarks.get(n.id);
+        const inputs = [
+          n,
+          index,
+          today,
+          derived.detail,
+          conflicts.byNode.get(n.id),
+          blockers.get(n.id),
+          overdue.get(n.id),
+          vis.hasChildren.has(n.id),
+          vis.hiddenCount.get(n.id),
+          vis.lodLimited.has(n.id),
+          marks ? marks.filter.join(',') : '',
+          marks ? marks.search.join(',') : '',
+        ];
+        const reuse = c && c.sig && sameInputs(c.inputs, inputs);
+        const data = reuse ? c!.node.data : buildData(n, doc, index, today, derived);
+        const sig = reuse ? c!.sig : JSON.stringify(data);
         const selected = selSet.has(n.id);
         const className = [
           focusSet && !focusSet.has(n.id) ? 'mm-dim' : '',
@@ -300,7 +323,7 @@ export function Canvas() {
             ...(prev?.measured ? { measured: prev.measured } : {}),
           };
         }
-        nextCache.set(n.id, { sig, selected, className, node });
+        nextCache.set(n.id, { sig, selected, className, node, inputs });
         out.push(node);
       }
       cache.current = nextCache;
@@ -575,7 +598,7 @@ export function Canvas() {
   useEffect(() => {
     canvasApi.animatePositions = (target) =>
       new Promise<void>((resolve) => {
-        const ms = 180;
+        const ms = MOTION.move;
         if (reducedMotion()) return resolve();
         const start = new Map<string, Position>();
         for (const id of Object.keys(target)) {
@@ -713,7 +736,7 @@ export function Canvas() {
       const ch = wrapRef.current?.clientHeight ?? window.innerHeight;
       dy = (ch * 0.28) / zoom;
     }
-    void rf.setCenter(c.x, c.y + dy, { zoom, duration: reducedMotion() ? 0 : 350 });
+    void rf.setCenter(c.x, c.y + dy, { zoom, duration: motion(MOTION.move) });
   }, [focusRequest, rf]);
 
   // Úvodní zobrazení / po otevření souboru: celá mapa podle základních rozměrů uzlů
@@ -725,7 +748,7 @@ export function Canvas() {
       const d = useDocStore.getState().doc;
       if (!d) return;
       const { w, h } = viewSize();
-      void rf.setViewport(fitViewport(d, w, h, { minZoom: 0.1, maxZoom: 1.2 }), { duration: reducedMotion() ? 0 : 350 });
+      void rf.setViewport(fitViewport(d, w, h, { minZoom: 0.1, maxZoom: 1.2 }), { duration: motion(MOTION.move) });
     }, 60);
     return () => clearTimeout(t);
   }, [fitRequest, rf]);
@@ -736,7 +759,7 @@ export function Canvas() {
     const d = useDocStore.getState().doc;
     if (!d) return;
     const { w, h } = viewSize();
-    void rf.setViewport(zoomPresetViewport(d, w, h), { duration: reducedMotion() ? 0 : 350 });
+    void rf.setViewport(zoomPresetViewport(d, w, h), { duration: motion(MOTION.move) });
   }, [zoomPresetRequest, rf]);
 
   // Bez uloženého pohledu: úvodní zobrazení celé mapy (stejný výpočet jako po otevření souboru).

@@ -2,7 +2,7 @@
  * Vyhledávání (fáze 4): názvy, štítky, poznámky a položky checklistu
  * bez ohledu na velikost písmen a diakritiku. Uzly v koši se nehledají.
  */
-import { findFolded, foldText } from './text';
+import { foldText, foldWithMap } from './text';
 import type { DocData, MapNode } from './types';
 
 export type SearchField = 'title' | 'tag' | 'notes' | 'checklist';
@@ -40,21 +40,57 @@ function snippet(text: string, range: [number, number]): { text: string; range: 
 
 const flat = (t: string) => t.replace(/\s+/g, ' ').trim();
 
-function matchNode(n: MapNode, q: string): SearchResult | null {
-  const title = n.title.trim() || 'Bez názvu';
-  const t = findFolded(title, q);
-  if (t) return { id: n.id, field: 'title', text: title, range: t };
-  for (const tag of n.tags) {
-    const r = findFolded(tag, q);
-    if (r) return { id: n.id, field: 'tag', text: tag, range: r };
+/** Text převedený na tvar bez diakritiky + mapa pozic zpět do originálu. */
+interface FoldedText {
+  text: string;
+  folded: string;
+  map: number[];
+}
+interface FoldedNode {
+  title: FoldedText;
+  tags: FoldedText[];
+  notes: FoldedText;
+  checklist: FoldedText[];
+}
+const fold = (text: string): FoldedText => ({ text, ...foldWithMap(text) });
+
+/**
+ * Mezipaměť převedených textů: počítá se jednou pro každý (nezměněný) uzel,
+ * ne při každém dotazu. Klíčem je objekt uzlu – při změně uzlu vznikne nový.
+ */
+const cache = new WeakMap<MapNode, FoldedNode>();
+function folded(n: MapNode): FoldedNode {
+  let f = cache.get(n);
+  if (!f) {
+    f = {
+      title: fold(n.title.trim() || 'Bez názvu'),
+      tags: n.tags.map(fold),
+      notes: fold(flat(n.notes)),
+      checklist: n.checklist.map((c) => fold(flat(c.text))),
+    };
+    cache.set(n, f);
   }
-  const notes = flat(n.notes);
-  const nr = findFolded(notes, q);
-  if (nr) return { id: n.id, field: 'notes', ...snippet(notes, nr) };
-  for (const c of n.checklist) {
-    const text = flat(c.text);
-    const r = findFolded(text, q);
-    if (r) return { id: n.id, field: 'checklist', ...snippet(text, r) };
+  return f;
+}
+
+function find(f: FoldedText, q: string): [number, number] | null {
+  const at = f.folded.indexOf(q);
+  return at < 0 ? null : [f.map[at]!, f.map[at + q.length]!];
+}
+
+function matchNode(n: MapNode, q: string): SearchResult | null {
+  const f = folded(n);
+  const t = find(f.title, q);
+  if (t) return { id: n.id, field: 'title', text: f.title.text, range: t };
+  for (const tag of f.tags) {
+    const r = find(tag, q);
+    if (r) return { id: n.id, field: 'tag', text: tag.text, range: r };
+  }
+  const nr = find(f.notes, q);
+  if (nr) return { id: n.id, field: 'notes', ...snippet(f.notes.text, nr) };
+  for (const c of f.checklist) {
+    const r = find(c, q);
+    if (r) return { id: n.id, field: 'checklist', ...snippet(c.text, r) };
   }
   return null;
 }
