@@ -25,8 +25,10 @@ export const GRID = 10;
 export const NODE_SIZE: Record<NodeType, { w: number; h: number }> = BASE_NODE_SIZE;
 
 /** Pomocník pro plochu – nastavuje Canvas (střed viditelné oblasti v souřadnicích plochy). */
-export const canvasApi: { viewCenter: () => Position } = {
+export const canvasApi: { viewCenter: () => Position; visibleIds: () => string[] } = {
   viewCenter: () => ({ x: 0, y: 0 }),
+  /** Právě viditelné uzly (podle sbalení a úrovně detailu) – pro Ctrl+A. */
+  visibleIds: () => [],
 };
 
 const snap = (v: number) => Math.round(v / GRID) * GRID;

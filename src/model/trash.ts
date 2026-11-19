@@ -17,6 +17,10 @@ export interface TrashBatch {
   count: number;
   deletedAt: string;
   projectTitle?: string;
+  /** Počet kořenů – hromadné smazání více uzlů je jedna položka koše. */
+  roots: number;
+  /** Názvy kořenů (pro popis hromadné položky). */
+  rootTitles: string[];
 }
 
 const label = (n: MapNode | undefined) => (n?.title.trim() ? `„${n.title.trim()}“` : 'uzel bez názvu');
@@ -57,16 +61,28 @@ export function listTrash(data: DocData): TrashBatch[] {
     const batchId = n.trash?.batchId ?? n.id;
     let b = batches.get(batchId);
     if (!b) {
-      b = { batchId, rootId: n.id, title: n.title, type: n.type, count: 0, deletedAt: n.deletedAt };
+      b = { batchId, rootId: n.id, title: n.title, type: n.type, count: 0, deletedAt: n.deletedAt, roots: 0, rootTitles: [] };
       batches.set(batchId, b);
     }
     b.count++;
     if (n.trash?.isRoot || !n.trash) {
+      b.roots++;
+      b.rootTitles.push(n.title.trim() || 'bez názvu');
+      if (b.roots > 1) continue; // hromadná položka: první kořen určuje typ a projekt
       b.rootId = n.id;
       b.title = n.title;
       b.type = n.type;
       b.deletedAt = n.deletedAt;
       b.projectTitle = n.trash?.projectTitle;
+    }
+  }
+  for (const b of batches.values()) {
+    if (b.roots > 1) {
+      b.rootTitles.sort((x, y) => x.localeCompare(y, 'cs'));
+      const shown = b.rootTitles.slice(0, 3).map((t) => `„${t}“`).join(', ');
+      const more = b.roots - 3;
+      b.title = `${b.roots} ${b.roots < 5 ? 'uzly' : 'uzlů'}: ${shown}${more > 0 ? ` a ${more} další` : ''}`;
+      b.projectTitle = undefined;
     }
   }
   return [...batches.values()].sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : a.deletedAt > b.deletedAt ? -1 : 0));
@@ -95,10 +111,14 @@ export function restoreBatch(data: DocData, batchId: string): RestoreResult | { 
   const ids = batchIds(data, batchId);
   if (!ids.size) return { error: 'Položka v koši neexistuje.' };
   let rootId: string | null = null;
+  const rootIds: string[] = [];
   const nodes = { ...data.nodes };
   for (const id of ids) {
     const n = nodes[id]!;
-    if (n.trash?.isRoot || !n.trash) rootId = id;
+    if (n.trash?.isRoot || !n.trash) {
+      rootId ??= id;
+      rootIds.push(id);
+    }
     const { deletedAt: _d, trash: _t, ...rest } = n;
     nodes[id] = rest;
   }
@@ -137,10 +157,12 @@ export function restoreBatch(data: DocData, batchId: string): RestoreResult | { 
     cur = { nodes, edges: { ...cur.edges, [e.id]: e } };
   }
 
-  // Kořen: co se stalo s původními rodiči?
-  const root = rootId ? data.nodes[rootId] : undefined;
-  if (rootId && root?.trash?.parentIds?.length) {
-    const nowParents = new Set(parentEdges(cur, rootId).map((e) => e.source));
+  // Kořeny (u hromadného smazání víc): co se stalo s původními rodiči?
+  for (const rid of rootIds) {
+  const root = data.nodes[rid];
+  if (root?.trash?.parentIds?.length) {
+    const before = notices.length;
+    const nowParents = new Set(parentEdges(cur, rid).map((e) => e.source));
     for (const pid of root.trash.parentIds) {
       if (nowParents.has(pid)) continue;
       const p = nodes[pid];
@@ -150,9 +172,10 @@ export function restoreBatch(data: DocData, batchId: string): RestoreResult | { 
         notices.push(`Nadřazený uzel ${label(p)} je v koši – po jeho obnovení se vazba vrátí.`);
       }
     }
-    if (nowParents.size === 0 && notices.length) {
+    if (nowParents.size === 0 && notices.length > before) {
       notices.push(`Uzel ${label(root)} zůstal volně na ploše.`);
     }
+  }
   }
   return { data: cur, notices, rootId };
 }

@@ -23,6 +23,7 @@ import {
   UnfoldVertical,
   ZoomIn,
   Scaling,
+  SquareMousePointer,
   Search as SearchIcon,
   Filter as FilterIcon,
 } from 'lucide-react';
@@ -80,6 +81,7 @@ export function TopBar() {
   const theme = useUiStore((s) => s.theme);
   const highlightLinks = useUiStore((s) => s.highlightLinks);
   const autoDetail = useUiStore((s) => s.autoDetail);
+  const multiMode = useUiStore((s) => s.multiMode);
   const scaleNodes = useUiStore((s) => s.scaleNodes);
   const picking = useUiStore((s) => !!s.linkPick);
   const fileName = useUiStore((s) => s.fileName);
@@ -174,6 +176,12 @@ export function TopBar() {
 
   const moreEntries: MenuEntry[] = mobile
     ? [
+        {
+          key: 'multi',
+          label: multiMode ? 'Vybrat více ✓' : 'Vybrat více',
+          icon: <SquareMousePointer size={18} />,
+          onSelect: () => ui().set({ multiMode: !multiMode }),
+        },
         { key: 'link', label: 'Propojit…', icon: <Link2 size={18} />, disabled: !selectedId, onSelect: () => startLinkPick(selectedId) },
         { key: 'filter', label: nFilter ? `Filtr (${nFilter})` : 'Filtr…', icon: <FilterIcon size={18} />, onSelect: openFilter },
         'sep',

@@ -41,6 +41,7 @@ import { EdgeMenu, LinkPickBar, LinkTypeMenu } from './LinkMenus';
 import { MapNodeView, type FlowNode, type FlowNodeData } from './MapNodeView';
 import { ZoomControls } from './ZoomControls';
 import { FilterBar } from '../toolbar/Filter';
+import { MultiSelectBar } from './MultiSelect';
 
 const nodeTypes = { mm: MapNodeView };
 const edgeTypes = { floating: FloatingEdge };
@@ -123,6 +124,8 @@ function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string,
 export function Canvas() {
   const doc = useDocStore((s) => s.doc);
   const selectedId = useUiStore((s) => s.selectedId);
+  const selection = useUiStore((s) => s.selection);
+  const selSet = useMemo(() => new Set(selection), [selection]);
   const gridVisible = useUiStore((s) => s.gridVisible);
   const theme = useUiStore((s) => s.theme);
   const focusRequest = useUiStore((s) => s.focusRequest);
@@ -158,10 +161,11 @@ export function Canvas() {
     if (maxDepth === Infinity) return [];
     const out: string[] = [];
     if (selectedId) out.push(selectedId);
+    out.push(...selection);
     if (searchPick) out.push(searchPick);
     if (fres) out.push(...fres.matches);
     return out;
-  }, [maxDepth, selectedId, searchPick, fres]);
+  }, [maxDepth, selectedId, selection, searchPick, fres]);
   // Označené uzly: skryté shody filtru a hledání se spočítají u viditelného předka.
   // Shody jen při aktivním filtru / neprázdném hledání (výběr ani jiné výjimky se nepočítají).
   const marks = useMemo(() => (fres ? [...fres.matches] : []), [fres]);
@@ -186,14 +190,16 @@ export function Canvas() {
 
   // Zvýraznění vazeb vybraného uzlu: sousedé (po vykreslených čarách) + uzel sám.
   const focusSet = useMemo(() => {
-    if (!highlightLinks || !selectedId || !vis?.visible.has(selectedId)) return null;
-    const set = new Set<string>([selectedId]);
+    // Platí pro všechny vybrané uzly (výběr více uzlů).
+    const sel = [...selSet].filter((id) => vis?.visible.has(id));
+    if (!highlightLinks || !sel.length) return null;
+    const set = new Set<string>(sel);
     for (const r of routed) {
-      if (r.source === selectedId) set.add(r.target);
-      else if (r.target === selectedId) set.add(r.source);
+      if (selSet.has(r.source)) set.add(r.target);
+      if (selSet.has(r.target)) set.add(r.source);
     }
     return set;
-  }, [highlightLinks, selectedId, vis, routed]);
+  }, [highlightLinks, selSet, vis, routed]);
 
   // Animace sbalení / rozbalení: nově viditelné uzly se prolnou, skryté chvíli doznívají.
   const prevVisible = useRef<Set<string> | null>(null);
@@ -250,7 +256,7 @@ export function Canvas() {
         }
         const data = buildData(n, doc, index, today, derived);
         const sig = JSON.stringify(data);
-        const selected = n.id === selectedId;
+        const selected = selSet.has(n.id);
         const className = [
           focusSet && !focusSet.has(n.id) ? 'mm-dim' : '',
           // Sbalený uzel se skrytými shodami se netlumí – je potřeba ho rozbalit.
@@ -289,7 +295,7 @@ export function Canvas() {
       const t = setTimeout(() => setAnimTick((x) => x + 1), nextWake - now + 10);
       return () => clearTimeout(t);
     }
-  }, [doc, index, vis, conflicts, blockers, selectedId, today, focusSet, animTick, autoDetail, level, overdue, fres]);
+  }, [doc, index, vis, conflicts, blockers, selSet, today, focusSet, animTick, autoDetail, level, overdue, fres]);
 
   const edges = useMemo<FloatingEdgeType[]>(() => {
     if (!doc || !index || !conflicts) return [];
@@ -304,13 +310,13 @@ export function Canvas() {
       return color;
     };
     const interactionWidth = coarsePointer() ? 32 : 18;
-    const sel = focusSet ? selectedId : null;
+    const sel = focusSet ? selSet : null;
     return routed.map((r): FloatingEdgeType => {
       const first = doc.edges[r.edgeIds[0]!]!;
       const conflict = r.edgeIds.some((id) => conflicts.edgeIds.has(id));
       // Barva podle projektu rodiče / blokujícího uzlu; souvislost neutrálně.
       const color = r.kind === 'related' ? 'var(--edge-related)' : projectColor(first.source);
-      const touches = !!sel && (r.source === sel || r.target === sel);
+      const touches = !!sel && (sel.has(r.source) || sel.has(r.target));
       const out = (id: string) => !!fres && !fres.matches.has(id) && !fres.ancestors.has(id) && !vis?.hiddenMarks.get(id)?.filter.length;
       return {
         id: r.id,
@@ -339,7 +345,7 @@ export function Canvas() {
         },
       };
     });
-  }, [doc, index, routed, conflicts, focusSet, selectedId, fres, vis]);
+  }, [doc, index, routed, conflicts, focusSet, selSet, fres, vis]);
 
   // Kompenzace zoomu – strop proti překrývání projektů v Přehledu (pozice se neposouvají).
   const scaleLevel: LodLevel = autoDetail ? level : lodLevel(rf.getZoom());
@@ -427,6 +433,11 @@ export function Canvas() {
   const onNodeClick: NodeMouseHandler<FlowNode> = useCallback((e, node) => {
     if (handlePickTarget(node.id, e.clientX, e.clientY)) return;
     const ui = useUiStore.getState();
+    // Ctrl / Cmd + klik nebo režim „Vybrat více“ (telefon): přidat / odebrat z výběru.
+    if (e.ctrlKey || e.metaKey || ui.multiMode) {
+      ui.toggleSelect(node.id);
+      return;
+    }
     ui.select(node.id, true);
     if (isMobileNow()) ui.focusNode(node.id);
   }, []);
@@ -459,7 +470,8 @@ export function Canvas() {
   const openMenu = useCallback(
     (x: number, y: number, nodeId: string | null) => {
       const ui = useUiStore.getState();
-      if (nodeId) ui.select(nodeId, false);
+      // Nabídka nad výběrem více uzlů výběr nemění (nabídne hromadné akce).
+      if (nodeId && !(ui.selection.length > 1 && ui.selection.includes(nodeId))) ui.select(nodeId, false);
       ui.set({
         contextMenu: { x, y, nodeId, flowPos: nodeId ? undefined : rf.screenToFlowPosition({ x, y }) },
       });
@@ -491,6 +503,11 @@ export function Canvas() {
     press.current = null;
   };
   const onPointerDown = (e: ReactPointerEvent) => {
+    if (e.shiftKey && e.pointerType === 'mouse' && e.button === 0 && (e.target as Element).classList.contains('react-flow__pane')) {
+      e.preventDefault();
+      startBand(e);
+      return;
+    }
     if (e.pointerType !== 'touch' || !e.isPrimary) return;
     const target = e.target as Element;
     const nodeEl = target.closest('.react-flow__node');
@@ -519,6 +536,68 @@ export function Canvas() {
   const onDoubleClick = (e: ReactMouseEvent) => {
     if (!(e.target as Element).classList.contains('react-flow__pane')) return;
     createProject(rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+  };
+
+  // --- Ctrl+A: viditelné uzly ---
+  useEffect(() => {
+    canvasApi.visibleIds = () => (vis ? [...vis.visible] : []);
+  }, [vis]);
+
+  // --- Shift + tažení po prázdné ploše = výběr obdélníkem (běžné tažení posouvá plochu) ---
+  const [shiftDown, setShiftDown] = useState(false);
+  const [band, setBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => e.key === 'Shift' && setShiftDown(true);
+    const up = (e: KeyboardEvent) => e.key === 'Shift' && setShiftDown(false);
+    const reset = () => setShiftDown(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', reset);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', reset);
+    };
+  }, []);
+  const startBand = (e: ReactPointerEvent) => {
+    const wr = wrapRef.current?.getBoundingClientRect();
+    if (!wr) return;
+    const x1 = e.clientX;
+    const y1 = e.clientY;
+    const additive = e.ctrlKey || e.metaKey;
+    const pointerId = e.pointerId;
+    setBand({ x1, y1, x2: x1, y2: y1 });
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      setBand({ x1, y1, x2: ev.clientX, y2: ev.clientY });
+    };
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      setBand(null);
+      if (ev.type === 'pointercancel' || (Math.abs(ev.clientX - x1) < 4 && Math.abs(ev.clientY - y1) < 4)) return;
+      const a = rf.screenToFlowPosition({ x: Math.min(x1, ev.clientX), y: Math.min(y1, ev.clientY) });
+      const b = rf.screenToFlowPosition({ x: Math.max(x1, ev.clientX), y: Math.max(y1, ev.clientY) });
+      const d = useDocStore.getState().doc;
+      const ids: string[] = [];
+      for (const id of canvasApi.visibleIds()) {
+        const n = d?.nodes[id];
+        if (!n) continue;
+        const internal = rf.getInternalNode(id);
+        const p = internal?.internals.positionAbsolute ?? n.position;
+        const w = internal?.measured.width ?? NODE_SIZE[n.type].w;
+        const h = internal?.measured.height ?? NODE_SIZE[n.type].h;
+        // Uzel zasažený obdélníkem (i částečně).
+        if (p.x < b.x && p.x + w > a.x && p.y < b.y && p.y + h > a.y) ids.push(id);
+      }
+      const ui = useUiStore.getState();
+      ui.selectMany(additive ? [...ui.selection, ...ids] : ids, false);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
   };
 
   // --- střed plochy pro nově vytvářené projekty ---
@@ -622,7 +701,7 @@ export function Canvas() {
         nodesConnectable={false}
         elementsSelectable={false}
         selectionOnDrag={false}
-        panOnDrag={[0, 1]}
+        panOnDrag={shiftDown ? [1] : [0, 1]}
         zoomOnDoubleClick={false}
         deleteKeyCode={null}
         selectionKeyCode={null}
@@ -636,8 +715,20 @@ export function Canvas() {
       <div className="canvas-bars">
         <FilterBar />
         <LinkPickBar />
+        <MultiSelectBar />
       </div>
       <LinkDragLayer />
+      {band && (
+        <div
+          className="select-band"
+          style={{
+            left: Math.min(band.x1, band.x2) - (wrapRef.current?.getBoundingClientRect().left ?? 0),
+            top: Math.min(band.y1, band.y2) - (wrapRef.current?.getBoundingClientRect().top ?? 0),
+            width: Math.abs(band.x2 - band.x1),
+            height: Math.abs(band.y2 - band.y1),
+          }}
+        />
+      )}
       <EdgeMenu />
       <LinkTypeMenu />
     </div>

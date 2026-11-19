@@ -82,7 +82,12 @@ export type PersistStatus = 'unknown' | 'granted' | 'denied' | 'unsupported';
 interface UiState {
   phase: Phase;
   theme: Theme;
+  /** Hlavní vybraný uzel (detail, akce s jedním uzlem) = poslední přidaný do výběru. */
   selectedId: string | null;
+  /** Všechny vybrané uzly (výběr více uzlů: Ctrl+klik, Shift+tažení, Ctrl+A). */
+  selection: string[];
+  /** Telefon: režim „Vybrat více“ – klepnutí přidá / odebere uzel z výběru. */
+  multiMode: boolean;
   detailOpen: boolean;
   sidebarOpen: boolean;
   gridVisible: boolean;
@@ -110,7 +115,7 @@ interface UiState {
   /** Otevřený panel Koš. */
   trashOpen: boolean;
   /** Druhá úroveň kontextové nabídky (Stav… / Priorita…). */
-  subMenu: { x: number; y: number; nodeId: string; kind: 'status' | 'priority' } | null;
+  subMenu: { x: number; y: number; nodeId: string; kind: 'status' | 'priority'; /** hromadně nad výběrem */ nodeIds?: string[] } | null;
   /** Fáze 3: vazby. */
   selectedEdge: string | null;
   edgeMenu: EdgeMenuState | null;
@@ -135,6 +140,10 @@ interface UiState {
 
   set(patch: Partial<UiState>): void;
   select(id: string | null, openDetail?: boolean): void;
+  /** Přidá uzel do výběru, nebo ho z výběru odebere. */
+  toggleSelect(id: string): void;
+  /** Nastaví výběr více uzlů najednou. */
+  selectMany(ids: string[], openDetail?: boolean): void;
   toast(text: string, kind?: Toast['kind']): void;
   dismissToast(id: number): void;
   /** Vystředí uzel; `zoom` = přiblížit aspoň na tuto hodnotu (jinak výchozí). */
@@ -178,6 +187,8 @@ export const useUiStore = create<UiState>()((set) => ({
   phase: 'loading',
   theme: initialTheme(),
   selectedId: null,
+  selection: [],
+  multiMode: false,
   detailOpen: false,
   sidebarOpen: true,
   gridVisible: true,
@@ -216,10 +227,29 @@ export const useUiStore = create<UiState>()((set) => ({
   bellOpen: false,
 
   set(patch) {
+    // Kdo nastaví jen selectedId (např. zrušení výběru), nastaví tím i celý výběr.
+    if ('selectedId' in patch && !('selection' in patch)) patch = { ...patch, selection: patch.selectedId ? [patch.selectedId] : [] };
     set(patch);
   },
   select(id, openDetail = true) {
-    set((s) => ({ selectedId: id, selectedEdge: null, detailOpen: id ? openDetail || s.detailOpen : false }));
+    set((s) => ({ selectedId: id, selection: id ? [id] : [], selectedEdge: null, detailOpen: id ? openDetail || s.detailOpen : false }));
+  },
+  toggleSelect(id) {
+    set((s) => {
+      const has = s.selection.includes(id);
+      const selection = has ? s.selection.filter((x) => x !== id) : [...s.selection, id];
+      const selectedId = selection.length ? selection[selection.length - 1]! : null;
+      return { selection, selectedId, selectedEdge: null, detailOpen: selection.length ? s.detailOpen || true : false };
+    });
+  },
+  selectMany(ids, openDetail = true) {
+    const selection = [...new Set(ids)];
+    set((s) => ({
+      selection,
+      selectedId: selection.length ? selection[selection.length - 1]! : null,
+      selectedEdge: null,
+      detailOpen: selection.length ? openDetail || s.detailOpen : false,
+    }));
   },
   toast(text, kind = 'info') {
     const id = toastSeq++;

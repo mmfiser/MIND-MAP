@@ -148,6 +148,12 @@ Schéma dokumentu je ve verzi **4**. Soubory a lokální data ze starších verz
 - Řazení podle termínu, při shodě podle priority. Klik vystředí uzel a otevře detail. Přepočítá se při změně dat a o půlnoci.
 - Jen v otevřené aplikaci, žádné systémové notifikace.
 
+## Výběr více uzlů a hromadné akce
+- **Výběr:** Ctrl + klik (Mac: Cmd) přidá / odebere uzel; Shift + tažení po prázdné ploše vybere obdélníkem (s Ctrl přidá k výběru); Ctrl+A vybere všechny viditelné uzly; Esc nebo klik na prázdnou plochu výběr zruší. Na telefonu „⋯“ → **Vybrat více** (klepnutí přidává / odebírá, lišta „Vybráno: N · Hotovo“).
+- **Přesun:** tažení kteréhokoli vybraného uzlu posune celý výběr se zachováním vzájemných pozic a přichycením k mřížce (jeden krok Zpět). Šipky posunou výběr o krok mřížky, Shift + šipka o 5 kroků. Zamčené uzly (fáze 5) zůstanou na místě.
+- **Smazání:** Delete s potvrzením „Smazat N uzlů?“ – v koši jedna položka, jeden krok Zpět.
+- **Panel a kontextová nabídka** nad výběrem: Stav, Priorita, Označit jako hotové, Smazat. Stav a priorita se týkají jen úkolů; projekty a milníky se přeskočí a aplikace řekne kolik.
+
 ## Spuštění
 
 Je potřeba Node.js 20 nebo novější.
@@ -258,3 +264,5 @@ tests/           Vitest – hierarchie, šifrování, migrace, rozhodování o v
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | zpět / znovu |
 | Ctrl+S / Ctrl+Shift+S | uložit / uložit jako |
 | Esc | zrušit výběr, režim Propojit, zavřít nabídku či dialog |
+| Ctrl+klik / Shift+tažení / Ctrl+A | výběr více uzlů |
+| Šipky (Shift = větší krok) | posun vybraných uzlů |

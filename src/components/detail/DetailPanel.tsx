@@ -10,6 +10,7 @@ import {
 } from '../../app/actions';
 import { ChecklistEditor, DateField, DueStatus, IconPicker, PrioritySelect, StatusSelect, TagInput } from './Fields';
 import { BlockedHint, ConflictHints, LinksSection } from './LinksSection';
+import { MultiSelectPanel } from '../canvas/MultiSelect';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { parentEdges } from '../../model/graph';
 import { NODE_TYPE_LABELS, PROJECT_PALETTE, colorHex } from '../../model/labels';
@@ -220,8 +221,25 @@ export function DetailPanel() {
   const selectedId = useUiStore((s) => s.selectedId);
   const open = useUiStore((s) => s.detailOpen);
   const node = useDocStore((s) => (selectedId ? s.doc?.nodes[selectedId] : undefined));
-  if (!open || !node) return null;
+  const multi = useUiStore((s) => s.selection.length > 1);
   const close = () => useUiStore.getState().set({ detailOpen: false });
+  if (open && multi) {
+    // Výběr více uzlů: místo detailu hromadné akce.
+    return (
+      <aside className="detail" aria-label="Vybrané uzly">
+        {mobile && <div className="grabber" aria-hidden />}
+        <div className="detail-head">
+          <span className="kind">Výběr více uzlů</span>
+          <div className="spacer" style={{ flex: 1 }} />
+          <button className="icon-btn" onClick={close} title="Zavřít" aria-label="Zavřít">
+            <X size={18} />
+          </button>
+        </div>
+        <MultiSelectPanel />
+      </aside>
+    );
+  }
+  if (!open || !node) return null;
   return (
     <aside className="detail" aria-label="Detail uzlu">
       {mobile && <div className="grabber" aria-hidden />}

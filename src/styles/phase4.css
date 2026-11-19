@@ -680,3 +680,34 @@ button.chip.due {
     border: 1px solid var(--border);
   }
 }
+
+/* --- Výběr více uzlů --- */
+.select-band {
+  position: absolute;
+  z-index: 30;
+  border: 1.5px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: 4px;
+  pointer-events: none;
+}
+.mm-node.selected {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-md);
+}
+.multi-panel .multi-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 15px;
+}
+.multi-panel .multi-note {
+  font-size: 13px;
+  margin-top: -6px;
+}
+.multi-panel .detail-actions .btn {
+  flex: 1 1 auto;
+}
+.multi-panel .opt:disabled,
+.multi-panel .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

@@ -34,6 +34,8 @@ import { parentEdges } from '../../model/graph';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import { Menu, type MenuEntry } from '../common/Menu';
+import { selectionMenuEntries } from './MultiSelect';
+import { setPriorityOfSelection, setStatusOfSelection } from '../../app/bulkActions';
 
 const I = 17;
 
@@ -134,9 +136,9 @@ function SubMenu() {
             const m = STATUS_META[st];
             return {
               key: st,
-              label: node.status === st ? `${m.label} ✓` : m.label,
+              label: !sub.nodeIds && node.status === st ? `${m.label} ✓` : m.label,
               icon: <m.Icon size={I} />,
-              onSelect: () => setStatusOf(sub.nodeId, st),
+              onSelect: () => (sub.nodeIds ? setStatusOfSelection(st) : setStatusOf(sub.nodeId, st)),
             };
           }),
         ]
@@ -144,9 +146,9 @@ function SubMenu() {
           { title: 'Priorita' },
           ...PRIORITY_ORDER.map((p) => ({
             key: p,
-            label: node.priority === p ? `${PRIORITY_META[p].label} ✓` : PRIORITY_META[p].label,
+            label: !sub.nodeIds && node.priority === p ? `${PRIORITY_META[p].label} ✓` : PRIORITY_META[p].label,
             icon: <span className="prio-dot" style={{ background: PRIORITY_META[p].color }} />,
-            onSelect: () => setPriorityOf(sub.nodeId, p),
+            onSelect: () => (sub.nodeIds ? setPriorityOfSelection(p) : setPriorityOf(sub.nodeId, p)),
           })),
         ];
   return <Menu x={sub.x} y={sub.y} entries={entries} onClose={close} />;
@@ -157,6 +159,11 @@ export function NodeContextMenu() {
   const close = useCallback(() => useUiStore.getState().set({ contextMenu: null }), []);
   if (!menu) return <SubMenu />;
   let entries: MenuEntry[];
+  const sel = useUiStore.getState().selection;
+  if (menu.nodeId && sel.length > 1 && sel.includes(menu.nodeId)) {
+    // Nabídka nad výběrem více uzlů: hromadné akce.
+    return <Menu x={menu.x} y={menu.y} entries={selectionMenuEntries({ x: menu.x, y: menu.y })} onClose={close} />;
+  }
   if (menu.nodeId) {
     const title = useDocStore.getState().doc?.nodes[menu.nodeId]?.title.trim() || 'Bez názvu';
     entries = [{ title }, ...nodeMenuEntries(menu.nodeId, { x: menu.x, y: menu.y })];

@@ -2,6 +2,14 @@ import { useEffect } from 'react';
 import { addChildTo, addSiblingTo, deleteWithConfirm } from '../app/actions';
 import { saveToFile } from '../app/fileSync';
 import { cancelLinkPick, toggleCollapse } from '../app/linkActions';
+import {
+  ARROW_STEP,
+  ARROW_STEP_LARGE,
+  clearSelection,
+  deleteSelectionWithConfirm,
+  moveSelection,
+  selectAllVisible,
+} from '../app/bulkActions';
 import { focusSearch } from '../components/toolbar/Search';
 import { useDocStore } from '../store/docStore';
 import { useUiStore } from '../store/uiStore';
@@ -36,6 +44,11 @@ export function useShortcuts(): void {
       }
       if (modalOpen || isEditable(e.target)) return;
 
+      if (ctrl && key === 'a') {
+        e.preventDefault();
+        selectAllVisible();
+        return;
+      }
       if (ctrl && key === 'z' && !e.shiftKey) {
         e.preventDefault();
         useDocStore.getState().undo();
@@ -58,7 +71,10 @@ export function useShortcuts(): void {
         if (ui.contextMenu) ui.set({ contextMenu: null });
         else if (ui.linkPick) cancelLinkPick();
         else if (ui.selectedEdge) ui.set({ selectedEdge: null, edgeMenu: null });
-        else ui.select(null);
+        else {
+          clearSelection();
+          if (ui.multiMode) ui.set({ multiMode: false });
+        }
         return;
       }
       if (!sel) return;
@@ -70,7 +86,14 @@ export function useShortcuts(): void {
         addSiblingTo(sel);
       } else if (e.key === 'Delete') {
         e.preventDefault();
-        void deleteWithConfirm(sel);
+        void (ui.selection.length > 1 ? deleteSelectionWithConfirm() : deleteWithConfirm(sel));
+      } else if (e.key.startsWith('Arrow')) {
+        // Šipky: posun vybraných uzlů o krok mřížky (Shift = větší krok).
+        e.preventDefault();
+        const step = e.shiftKey ? ARROW_STEP_LARGE : ARROW_STEP;
+        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        moveSelection(dx, dy);
       } else if (key === 'f') {
         e.preventDefault();
         ui.focusNode(sel);
