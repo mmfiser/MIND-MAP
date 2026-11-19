@@ -447,7 +447,10 @@ export function Canvas() {
     useUiStore.getState().set({ notesFor: node.id });
   }, []);
 
+  // Po výběru obdélníkem prohlížeč pošle ještě klik na plochu – ten nesmí výběr zrušit.
+  const suppressPaneClickUntil = useRef(0);
   const onPaneClick = useCallback(() => {
+    if (Date.now() < suppressPaneClickUntil.current) return;
     const ui = useUiStore.getState();
     if (ui.contextMenu) ui.set({ contextMenu: null });
     else if (ui.selectedEdge) ui.set({ selectedEdge: null, edgeMenu: null });
@@ -578,6 +581,7 @@ export function Canvas() {
       window.removeEventListener('pointercancel', end);
       setBand(null);
       if (ev.type === 'pointercancel' || (Math.abs(ev.clientX - x1) < 4 && Math.abs(ev.clientY - y1) < 4)) return;
+      suppressPaneClickUntil.current = Date.now() + 400;
       const a = rf.screenToFlowPosition({ x: Math.min(x1, ev.clientX), y: Math.min(y1, ev.clientY) });
       const b = rf.screenToFlowPosition({ x: Math.max(x1, ev.clientX), y: Math.max(y1, ev.clientY) });
       const d = useDocStore.getState().doc;
