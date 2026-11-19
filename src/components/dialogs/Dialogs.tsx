@@ -224,7 +224,7 @@ function PickerDialog() {
   );
 }
 
-const PERSIST_TEXT: Record<string, string> = {
+export const PERSIST_TEXT: Record<string, string> = {
   granted: 'Povoleno – prohlížeč data sám nesmaže.',
   denied: 'Nepovoleno – při nedostatku místa může prohlížeč data smazat. Pravidelně ukládejte do souboru.',
   unsupported: 'Prohlížeč trvalé úložiště nepodporuje.',
@@ -279,7 +279,7 @@ function SettingsDialog() {
         <span>Ukládání do souboru</span>
         <div>
           {hasFileSystemAccess()
-            ? 'Přímý zápis do souboru (File System Access API).'
+            ? 'Přímý zápis do vybraného souboru.'
             : canShareFiles()
               ? 'Sdílení souboru (Sdílet → OneDrive), jinak stažení.'
               : 'Stažení souboru.'}
@@ -376,8 +376,20 @@ export function Toasts() {
   return (
     <div className="toasts" aria-live="polite">
       {toasts.map((t) => (
-        <div key={t.id} className={`toast ${t.kind}`} onClick={() => useUiStore.getState().dismissToast(t.id)}>
-          {t.text}
+        <div key={t.id} className={`toast ${t.kind}${t.action ? ' with-action' : ''}`} onClick={() => useUiStore.getState().dismissToast(t.id)}>
+          <span>{t.text}</span>
+          {t.action && (
+            <button
+              className="btn small toast-action"
+              onClick={(e) => {
+                e.stopPropagation();
+                useUiStore.getState().dismissToast(t.id);
+                t.action!.run();
+              }}
+            >
+              {t.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>

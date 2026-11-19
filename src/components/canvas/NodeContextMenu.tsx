@@ -8,6 +8,9 @@ import {
   FoldVertical,
   Link2,
   Milestone,
+  Network,
+  Pin,
+  PinOff,
   UnfoldVertical,
   GitFork,
   ListPlus,
@@ -35,6 +38,8 @@ import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import { Menu, type MenuEntry } from '../common/Menu';
 import { selectionMenuEntries } from './MultiSelect';
+import { toggleNodeLock } from '../../app/lockActions';
+import { arrangeSelection, lastLayoutDir } from '../../app/layoutActions';
 import { setPriorityOfSelection, setStatusOfSelection } from '../../app/bulkActions';
 
 const I = 17;
@@ -83,6 +88,11 @@ export function nodeMenuEntries(nodeId: string, at?: { x: number; y: number }): 
     { key: 'link', label: 'Propojit s…', icon: <Link2 size={I} />, onSelect: () => startLinkPick(nodeId) },
   );
   if (hasKids) {
+    const last = lastLayoutDir();
+    entries.push(
+      { key: 'arrangeR', label: 'Uspořádat větev doprava', icon: <Network size={I} style={{ transform: 'rotate(-90deg)' }} />, kbd: last === 'right' ? 'L' : undefined, onSelect: () => void arrangeSelection('right', [nodeId]) },
+      { key: 'arrangeD', label: 'Uspořádat větev dolů', icon: <Network size={I} />, kbd: last === 'down' ? 'L' : undefined, onSelect: () => void arrangeSelection('down', [nodeId]) },
+    );
     entries.push(
       node.collapsed
         ? { key: 'expand', label: 'Rozbalit větev', icon: <UnfoldVertical size={I} />, kbd: 'Mezera', onSelect: () => toggleCollapse(nodeId) }
@@ -90,6 +100,11 @@ export function nodeMenuEntries(nodeId: string, at?: { x: number; y: number }): 
     );
   }
   entries.push({ key: 'notes', label: 'Poznámky', icon: <StickyNote size={I} />, onSelect: () => ui.set({ notesFor: nodeId }) });
+  entries.push(
+    node.positionLocked
+      ? { key: 'unpin', label: 'Odemknout pozici', icon: <PinOff size={I} />, kbd: 'P', onSelect: () => toggleNodeLock([nodeId]) }
+      : { key: 'pin', label: 'Zamknout pozici', icon: <Pin size={I} />, kbd: 'P', onSelect: () => toggleNodeLock([nodeId]) },
+  );
   // Projekt je vždy na nejvyšší úrovni – nejde ho přesunout pod jiný uzel.
   if (node.type !== 'project') entries.push(
     'sep',

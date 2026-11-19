@@ -12,6 +12,8 @@ export interface Toast {
   id: number;
   text: string;
   kind: 'info' | 'error' | 'success';
+  /** Volitelné tlačítko v oznámení (např. „Odemknout“). */
+  action?: { label: string; run: () => void };
 }
 
 export interface ContextMenuState {
@@ -88,6 +90,16 @@ interface UiState {
   selection: string[];
   /** Telefon: režim „Vybrat více“ – klepnutí přidá / odebere uzel z výběru. */
   multiMode: boolean;
+  /** Fáze 5: dialogy Nápověda a O aplikaci. */
+  helpOpen: boolean;
+  aboutOpen: boolean;
+  welcomeOpen: boolean;
+  /** Fáze 5: globální zámek pozic (pamatuje se; výchozí na dotyku zapnuto). */
+  globalLock: boolean;
+  /** Fáze 5: minimapa (výchozí na notebooku zapnutá), kruhový ovladač (na dotyku zapnutý, vpravo). */
+  showMinimap: boolean;
+  showJoystick: boolean;
+  joystickSide: 'left' | 'right';
   detailOpen: boolean;
   sidebarOpen: boolean;
   gridVisible: boolean;
@@ -144,7 +156,7 @@ interface UiState {
   toggleSelect(id: string): void;
   /** Nastaví výběr více uzlů najednou. */
   selectMany(ids: string[], openDetail?: boolean): void;
-  toast(text: string, kind?: Toast['kind']): void;
+  toast(text: string, kind?: Toast['kind'], action?: Toast['action']): void;
   dismissToast(id: number): void;
   /** Vystředí uzel; `zoom` = přiblížit aspoň na tuto hodnotu (jinak výchozí). */
   focusNode(id: string, zoom?: number): void;
@@ -153,6 +165,11 @@ interface UiState {
 }
 
 let toastSeq = 1;
+
+/** Dotykové zařízení (telefon, tablet) – pro výchozí stavy voleb. */
+export function isCoarse(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+}
 
 function readFlag(key: string, fallback: boolean): boolean {
   try {
@@ -189,6 +206,13 @@ export const useUiStore = create<UiState>()((set) => ({
   selectedId: null,
   selection: [],
   multiMode: false,
+  helpOpen: false,
+  aboutOpen: false,
+  welcomeOpen: false,
+  globalLock: readFlag('mapa-global-lock', isCoarse()),
+  showMinimap: readFlag('mapa-minimap', !isCoarse()),
+  showJoystick: readFlag('mapa-joystick', isCoarse()),
+  joystickSide: readFlag('mapa-joystick-left', false) ? 'left' : 'right',
   detailOpen: false,
   sidebarOpen: true,
   gridVisible: true,
@@ -251,10 +275,10 @@ export const useUiStore = create<UiState>()((set) => ({
       detailOpen: selection.length ? openDetail || s.detailOpen : false,
     }));
   },
-  toast(text, kind = 'info') {
+  toast(text, kind = 'info', action) {
     const id = toastSeq++;
-    set((s) => ({ toasts: [...s.toasts.slice(-3), { id, text, kind }] }));
-    setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'error' ? 6000 : 3500);
+    set((s) => ({ toasts: [...s.toasts.slice(-3), { id, text, kind, action }] }));
+    setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'error' || action ? 6000 : 3500);
   },
   dismissToast(id) {
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
@@ -302,4 +326,4 @@ export function askPassword(d: Omit<PasswordDialog, 'resolve'>): Promise<string 
   });
 }
 
-export const toast = (text: string, kind?: Toast['kind']) => useUiStore.getState().toast(text, kind);
+export const toast = (text: string, kind?: Toast['kind'], action?: Toast['action']) => useUiStore.getState().toast(text, kind, action);

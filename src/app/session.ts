@@ -3,6 +3,7 @@
  */
 import { lockSession } from '../crypto/keySession';
 import { notifyDateConflicts, notifyMigrationReport } from './dateCheck';
+import { maybeShowWelcome } from '../components/dialogs/HelpDialogs';
 import { DecryptError, EnvelopeFormatError } from '../crypto/envelope';
 import { createEmptyDocument } from '../model/factory';
 import { MigrationError } from '../model/migrations';
@@ -80,6 +81,7 @@ export async function setupNew(deviceName: string, password: string): Promise<vo
   const doc = createEmptyDocument(deviceName);
   await createVault(password, doc);
   enterReady(doc);
+  maybeShowWelcome();
 }
 
 /** Odemknutí. Vrací českou chybovou hlášku, nebo null při úspěchu. */

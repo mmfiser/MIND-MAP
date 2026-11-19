@@ -4,6 +4,7 @@ import {
   CalendarCheck,
   CalendarClock,
   Check,
+  Pin,
   Filter,
   Search,
   Link2,
@@ -61,6 +62,8 @@ export interface FlowNodeData extends Record<string, unknown> {
   /** Má poduzly v hierarchii. */
   collapsible: boolean;
   collapsed: boolean;
+  /** Pozice uzlu je zamčená (špendlík). */
+  pinned?: boolean;
   /** Počet uzlů skrytých sbalením nebo úrovní detailu. */
   hiddenCount: number;
   /** Poduzly skrývá jen úroveň detailu podle zoomu (ne ruční sbalení). */
@@ -318,6 +321,16 @@ function CollapseButton({ id, data }: { id: string; data: FlowNodeData }) {
   );
 }
 
+/** Špendlík: pozice uzlu je zamčená (odlišný od zámku blokující závislosti). */
+function PinBadge({ pinned }: { pinned?: boolean }) {
+  if (!pinned) return null;
+  return (
+    <span className="pin-badge" title="Pozice je zamčená" aria-label="Pozice je zamčená">
+      <Pin size={11} strokeWidth={2.5} />
+    </span>
+  );
+}
+
 function SharedBadge() {
   return (
     <span className="shared-badge" title="Sdílený uzel (více rodičů)">
@@ -374,6 +387,7 @@ function TaskNode({ id, data, selected }: { id: string; data: FlowNodeData; sele
       <TaskChips data={data} />
       {data.shared && <SharedBadge />}
       <MarksBadges data={data} />
+      <PinBadge pinned={data.pinned} />
       <Connectors id={id} />
       <CollapseButton id={id} data={data} />
     </div>
@@ -412,6 +426,7 @@ function MilestoneNode({ id, data, selected }: { id: string; data: FlowNodeData;
       </div>
       {data.shared && <SharedBadge />}
       <MarksBadges data={data} />
+      <PinBadge pinned={data.pinned} />
       <Connectors id={id} />
     </div>
   );
@@ -480,6 +495,7 @@ function ProjectNode({ id, data, selected }: { id: string; data: FlowNodeData; s
       )}
       {data.shared && <SharedBadge />}
       <MarksBadges data={data} />
+      <PinBadge pinned={data.pinned} />
       <Connectors id={id} />
       <CollapseButton id={id} data={data} />
     </div>

@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { GRID, NODE_SIZE, canvasApi, commitPositions, createProject } from '../../app/actions';
 import { blockedText, handlePickTarget } from '../../app/linkActions';
+import { notifyLocked } from '../../app/lockActions';
 import { blockersIndex } from '../../model/blocking';
 import { describeConflict, findDateConflicts, type ConflictReport } from '../../model/conflicts';
 import { computeVisibility, routeEdges, type VisibilityInfo } from '../../model/visibility';
@@ -42,6 +43,9 @@ import { MapNodeView, type FlowNode, type FlowNodeData } from './MapNodeView';
 import { ZoomControls } from './ZoomControls';
 import { FilterBar } from '../toolbar/Filter';
 import { MultiSelectBar } from './MultiSelect';
+import { Minimap } from './Minimap';
+import { Joystick } from './Joystick';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 const nodeTypes = { mm: MapNodeView };
 const edgeTypes = { floating: FloatingEdge };
@@ -95,6 +99,7 @@ function buildData(n: MapNode, d: DocData, index: HierarchyIndex, today: string,
     collapsible: x.vis.hasChildren.has(n.id),
     collapsed: n.collapsed && x.vis.hasChildren.has(n.id),
     hiddenCount: x.vis.hiddenCount.get(n.id) ?? 0,
+    pinned: !!n.positionLocked,
     lodLimited: x.vis.lodLimited.has(n.id),
     filterMarks: x.vis.hiddenMarks.get(n.id)?.filter ?? [],
     searchMarks: x.vis.hiddenMarks.get(n.id)?.search ?? [],
@@ -125,6 +130,14 @@ export function Canvas() {
   const doc = useDocStore((s) => s.doc);
   const selectedId = useUiStore((s) => s.selectedId);
   const selection = useUiStore((s) => s.selection);
+  const globalLock = useUiStore((s) => s.globalLock);
+  const showMinimap = useUiStore((s) => s.showMinimap);
+  const showJoystick = useUiStore((s) => s.showJoystick);
+  const joystickSide = useUiStore((s) => s.joystickSide);
+  const detailOpen = useUiStore((s) => s.detailOpen);
+  const mobileUi = useIsMobile();
+  const [coarse, setCoarse] = useState(() => coarsePointer());
+  const [paneSize, setViewSize] = useState({ w: 800, h: 600 });
   const selSet = useMemo(() => new Set(selection), [selection]);
   const gridVisible = useUiStore((s) => s.gridVisible);
   const theme = useUiStore((s) => s.theme);
@@ -266,10 +279,12 @@ export function Canvas() {
         ]
           .filter(Boolean)
           .join(' ');
+        // Zámek pozic: zamčený uzel ani při globálním zámku nejde táhnout (posun plochy funguje).
+        const draggable = !n.positionLocked && !globalLock && !vanishing;
         let node: FlowNode;
         // c.node === prev: mezipaměť musí odpovídat skutečně vykreslenému uzlu
         // (aktualizační funkce může React zavolat dvakrát).
-        if (c && prev && !prev.hidden && c.node === prev && c.sig === sig && c.selected === selected && c.className === className && prev.position === n.position) {
+        if (c && prev && !prev.hidden && prev.draggable === draggable && c.node === prev && c.sig === sig && c.selected === selected && c.className === className && prev.position === n.position) {
           node = prev;
         } else {
           node = {
@@ -277,7 +292,7 @@ export function Canvas() {
             type: 'mm',
             position: n.position,
             selected,
-            draggable: !n.positionLocked && !vanishing,
+            draggable,
             className,
             data: c && c.sig === sig ? c.node.data : data,
             // Rozměry si pamatujeme i pro dočasně skryté uzly (sbalení, úroveň detailu):
@@ -295,7 +310,7 @@ export function Canvas() {
       const t = setTimeout(() => setAnimTick((x) => x + 1), nextWake - now + 10);
       return () => clearTimeout(t);
     }
-  }, [doc, index, vis, conflicts, blockers, selSet, today, focusSet, animTick, autoDetail, level, overdue, fres]);
+  }, [doc, index, vis, conflicts, blockers, selSet, today, focusSet, animTick, autoDetail, level, overdue, fres, globalLock]);
 
   const edges = useMemo<FloatingEdgeType[]>(() => {
     if (!doc || !index || !conflicts) return [];
@@ -505,7 +520,16 @@ export function Canvas() {
     if (press.current) clearTimeout(press.current.timer);
     press.current = null;
   };
+  // Pokus o přesun zamčeného uzlu → krátké oznámení (uzel se nepohne, plocha se posune).
+  const lockProbe = useRef<{ x: number; y: number; id: string } | null>(null);
   const onPointerDown = (e: ReactPointerEvent) => {
+    lockProbe.current = null;
+    const probeEl = (e.target as Element).closest?.('.react-flow__node');
+    if (probeEl && e.isPrimary) {
+      const id = probeEl.getAttribute('data-id');
+      const n = id ? useDocStore.getState().doc?.nodes[id] : undefined;
+      if (id && n && (useUiStore.getState().globalLock || n.positionLocked)) lockProbe.current = { x: e.clientX, y: e.clientY, id };
+    }
     if (e.shiftKey && e.pointerType === 'mouse' && e.button === 0 && (e.target as Element).classList.contains('react-flow__pane')) {
       e.preventDefault();
       startBand(e);
@@ -531,6 +555,12 @@ export function Canvas() {
     };
   };
   const onPointerMove = (e: ReactPointerEvent) => {
+    const probe = lockProbe.current;
+    if (probe && Math.hypot(e.clientX - probe.x, e.clientY - probe.y) > 12) {
+      lockProbe.current = null;
+      // Na dotyku je při globálním zámku tažení přes uzel běžný posun plochy – upozorni jen jednou.
+      notifyLocked(useUiStore.getState().globalLock ? 'global' : 'node');
+    }
     if (!press.current) return;
     if (Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 10) cancelPress();
   };
@@ -540,6 +570,61 @@ export function Canvas() {
     if (!(e.target as Element).classList.contains('react-flow__pane')) return;
     createProject(rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
   };
+
+  // --- plynulý přesun při uspořádání větve (jen zobrazení; data se zapíšou jedním krokem potom) ---
+  useEffect(() => {
+    canvasApi.animatePositions = (target) =>
+      new Promise<void>((resolve) => {
+        const ms = 180;
+        if (reducedMotion()) return resolve();
+        const start = new Map<string, Position>();
+        for (const id of Object.keys(target)) {
+          const p = rf.getNode(id)?.position;
+          if (p) start.set(id, p);
+        }
+        if (!start.size) return resolve();
+        const t0 = performance.now();
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          resolve();
+        };
+        // Pojistka: skrytá karta nespouští snímky – data se zapíšou i tak.
+        setTimeout(finish, ms + 150);
+        const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+        const frame = () => {
+          if (done) return;
+          const t = Math.min(1, (performance.now() - t0) / ms);
+          const k = ease(t);
+          setNodes((ns) =>
+            ns.map((n) => {
+              const a = start.get(n.id);
+              const b = target[n.id];
+              return a && b ? { ...n, position: { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k } } : n;
+            }),
+          );
+          if (t < 1) requestAnimationFrame(frame);
+          else finish();
+        };
+        requestAnimationFrame(frame);
+      });
+  }, [rf]);
+
+  // --- rozměr plochy (minimapa, ovladač) a typ ukazatele ---
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setViewSize({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    const mq = window.matchMedia('(pointer: coarse)');
+    const onMq = () => setCoarse(mq.matches);
+    mq.addEventListener?.('change', onMq);
+    return () => {
+      ro.disconnect();
+      mq.removeEventListener?.('change', onMq);
+    };
+  }, []);
 
   // --- Ctrl+A: viditelné uzly ---
   useEffect(() => {
@@ -722,6 +807,17 @@ export function Canvas() {
         <MultiSelectBar />
       </div>
       <LinkDragLayer />
+      {/* Telefon: při otevřeném spodním panelu detailu se minimapa i ovladač schovají. */}
+      {showMinimap && !(mobileUi && detailOpen) && (
+        <div className={`minimap-wrap side-${mobileUi && showJoystick && coarse ? (joystickSide === 'right' ? 'left' : 'right') : 'right'}`}>
+          <Minimap viewW={paneSize.w} viewH={paneSize.h} />
+        </div>
+      )}
+      {showJoystick && coarse && !(mobileUi && detailOpen) && (
+        <div className={`joystick-wrap side-${joystickSide}`}>
+          <Joystick viewW={paneSize.w} viewH={paneSize.h} />
+        </div>
+      )}
       {band && (
         <div
           className="select-band"

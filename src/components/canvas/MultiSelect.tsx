@@ -1,4 +1,7 @@
-import { CircleCheck, CircleDot, Flag, Trash2, X } from 'lucide-react';
+import { CircleCheck, CircleDot, Flag, Network, Pin, Trash2, X } from 'lucide-react';
+import { arrangeSelection } from '../../app/layoutActions';
+import { toggleNodeLock } from '../../app/lockActions';
+import { allLocked } from '../../model/locks';
 import {
   deleteSelectionWithConfirm,
   markSelectionDone,
@@ -43,6 +46,15 @@ export function selectionMenuEntries(at: { x: number; y: number }): MenuEntry[] 
       icon: <Flag size={I} />,
       disabled: !tasks,
       onSelect: () => ui.set({ subMenu: { ...at, nodeId: nodeIds[0]!, nodeIds, kind: 'priority' } }),
+    },
+    { key: 'arrangeR', label: 'Uspořádat větve doprava', icon: <Network size={I} style={{ transform: 'rotate(-90deg)' }} />, onSelect: () => void arrangeSelection('right', nodeIds) },
+    { key: 'arrangeD', label: 'Uspořádat větve dolů', icon: <Network size={I} />, onSelect: () => void arrangeSelection('down', nodeIds) },
+    {
+      key: 'pin',
+      label: allLocked(useDocStore.getState().doc!, nodeIds) ? 'Odemknout pozice' : 'Zamknout pozice',
+      icon: <Pin size={I} />,
+      kbd: 'P',
+      onSelect: () => toggleNodeLock(nodeIds),
     },
     'sep',
     { key: 'del', label: `Smazat ${nUzlu(total)}…`, icon: <Trash2 size={I} />, kbd: 'Del', danger: true, onSelect: () => void deleteSelectionWithConfirm() },
@@ -117,6 +129,12 @@ export function MultiSelectPanel() {
       <div className="detail-actions">
         <button className="btn primary" disabled={!tasks.length} onClick={markSelectionDone}>
           <CircleCheck size={17} /> Označit jako hotové
+        </button>
+        <button className="btn" onClick={() => void arrangeSelection(undefined, selection)} title="Uspořádat větve vybraných uzlů (L)">
+          <Network size={17} /> Uspořádat větve
+        </button>
+        <button className="btn" onClick={() => toggleNodeLock(selection)}>
+          <Pin size={17} /> {allLocked(doc, selection) ? 'Odemknout pozice' : 'Zamknout pozice'}
         </button>
         <button className="btn" onClick={() => void deleteSelectionWithConfirm()}>
           <Trash2 size={17} /> Smazat {nUzlu(nodes.length)}

@@ -14,6 +14,7 @@ import { TopBar } from './components/toolbar/TopBar';
 import { useBeforeUnload } from './hooks/useBeforeUnload';
 import { BellPanel } from './components/toolbar/Bell';
 import { FilterDialog } from './components/toolbar/Filter';
+import { AboutDialog, HelpDialog, WelcomeDialog } from './components/dialogs/HelpDialogs';
 import { useShortcuts } from './hooks/useShortcuts';
 import { useDocStore } from './store/docStore';
 import { useUiStore } from './store/uiStore';
@@ -62,6 +63,9 @@ function Workspace() {
       <NodeContextMenu />
       <FilterDialog />
       <BellPanel />
+      <HelpDialog />
+      <AboutDialog />
+      <WelcomeDialog />
     </ReactFlowProvider>
   );
 }

@@ -11,6 +11,8 @@ import {
   selectAllVisible,
 } from '../app/bulkActions';
 import { focusSearch } from '../components/toolbar/Search';
+import { toggleGlobalLock, toggleNodeLock } from '../app/lockActions';
+import { arrangeSelection } from '../app/layoutActions';
 import { useDocStore } from '../store/docStore';
 import { useUiStore } from '../store/uiStore';
 
@@ -28,7 +30,19 @@ export function useShortcuts(): void {
     const onKey = (e: KeyboardEvent) => {
       const ui = useUiStore.getState();
       if (ui.phase !== 'ready') return;
-      const modalOpen = !!(ui.choice || ui.password || ui.picker || ui.notesFor || ui.settingsOpen || ui.trashOpen || ui.subMenu || ui.filterOpen || ui.bellOpen);
+      const modalOpen = !!(
+        ui.choice ||
+        ui.password ||
+        ui.picker ||
+        ui.notesFor ||
+        ui.settingsOpen ||
+        ui.trashOpen ||
+        ui.subMenu ||
+        ui.filterOpen ||
+        ui.bellOpen ||
+        ui.helpOpen ||
+        ui.aboutOpen
+      );
       const ctrl = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
 
@@ -65,6 +79,17 @@ export function useShortcuts(): void {
         focusSearch();
         return;
       }
+      if (e.key === '?') {
+        e.preventDefault();
+        ui.set({ helpOpen: true });
+        return;
+      }
+      if (e.key === 'P' && e.shiftKey) {
+        // Shift+P: globální zámek pozic
+        e.preventDefault();
+        toggleGlobalLock();
+        return;
+      }
 
       const sel = ui.selectedId;
       if (e.key === 'Escape') {
@@ -94,6 +119,12 @@ export function useShortcuts(): void {
         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
         const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
         moveSelection(dx, dy);
+      } else if (key === 'p' && !e.shiftKey) {
+        e.preventDefault();
+        toggleNodeLock();
+      } else if (key === 'l') {
+        e.preventDefault();
+        void arrangeSelection();
       } else if (key === 'f') {
         e.preventDefault();
         ui.focusNode(sel);

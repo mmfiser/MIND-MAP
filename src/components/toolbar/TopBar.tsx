@@ -9,7 +9,14 @@ import {
   Link2,
   ListPlus,
   ListTree,
+  KeyRound,
+  CircleHelp,
+  Info,
+  Map as MapIcon,
+  Gamepad2,
+  ArrowLeftRight,
   Lock,
+  LockOpen,
   Milestone,
   Moon,
   MoreHorizontal,
@@ -28,6 +35,7 @@ import {
   Filter as FilterIcon,
 } from 'lucide-react';
 import { BellButton } from './Bell';
+import { toggleGlobalLock } from '../../app/lockActions';
 import { filterCount, openFilter } from './Filter';
 import { SearchBox, focusSearch } from './Search';
 import { useMemo } from 'react';
@@ -82,6 +90,7 @@ export function TopBar() {
   const highlightLinks = useUiStore((s) => s.highlightLinks);
   const autoDetail = useUiStore((s) => s.autoDetail);
   const multiMode = useUiStore((s) => s.multiMode);
+  const globalLock = useUiStore((s) => s.globalLock);
   const scaleNodes = useUiStore((s) => s.scaleNodes);
   const picking = useUiStore((s) => !!s.linkPick);
   const fileName = useUiStore((s) => s.fileName);
@@ -132,6 +141,13 @@ export function TopBar() {
     ui().set({ scaleNodes: v });
     writeFlag('mapa-scale-nodes', v);
   };
+  const toggleFlag = (key: 'showMinimap' | 'showJoystick', storage: string) => {
+    const v = !ui()[key];
+    ui().set({ [key]: v });
+    writeFlag(storage, v);
+  };
+  const st = useUiStore.getState();
+  const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
   const viewEntries: MenuEntry[] = [
     { key: 'zoom80', label: 'Zoom 80 % (celá mapa uprostřed)', icon: <ZoomIn size={18} />, onSelect: () => ui().zoomPreset() },
     {
@@ -148,6 +164,23 @@ export function TopBar() {
     },
     { key: 'collapseAll', label: 'Sbalit vše na projekty', icon: <FoldVertical size={18} />, onSelect: collapseAll },
     { key: 'expandAll', label: 'Rozbalit vše', icon: <UnfoldVertical size={18} />, onSelect: expandEverything },
+    { key: 'minimap', label: st.showMinimap ? 'Minimapa ✓' : 'Minimapa', icon: <MapIcon size={18} />, onSelect: () => toggleFlag('showMinimap', 'mapa-minimap') },
+    ...(touch
+      ? [
+          { key: 'joystick', label: st.showJoystick ? 'Kruhový ovladač posunu ✓' : 'Kruhový ovladač posunu', icon: <Gamepad2 size={18} />, onSelect: () => toggleFlag('showJoystick', 'mapa-joystick') },
+          {
+            key: 'joystickSide',
+            label: st.joystickSide === 'right' ? 'Ovladač vlevo (teď vpravo)' : 'Ovladač vpravo (teď vlevo)',
+            icon: <ArrowLeftRight size={18} />,
+            disabled: !st.showJoystick,
+            onSelect: () => {
+              const left = ui().joystickSide === 'right';
+              ui().set({ joystickSide: left ? 'left' : 'right' });
+              writeFlag('mapa-joystick-left', left);
+            },
+          },
+        ]
+      : []),
     {
       key: 'highlight',
       label: highlightLinks ? 'Zvýrazňovat vazby vybraného uzlu ✓' : 'Zvýrazňovat vazby vybraného uzlu',
@@ -157,6 +190,18 @@ export function TopBar() {
   ];
   const undo = () => useDocStore.getState().undo();
   const redo = () => useDocStore.getState().redo();
+
+  // Globální zámek pozic (Shift+P). Na telefonu přímo na liště.
+  const lockBtn = (
+    <Tb
+      icon={globalLock ? <Lock size={I} /> : <LockOpen size={I} />}
+      label={globalLock ? 'Pozice zamčené' : 'Pozice odemčené'}
+      title={globalLock ? 'Pozice uzlů jsou zamčené – klepnutím odemknete (Shift+P)' : 'Zamknout pozice uzlů (Shift+P)'}
+      onClick={toggleGlobalLock}
+      active={globalLock}
+    />
+  );
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 360;
 
   const saveTitle = dirty ? 'Uložit do souboru – máte neuložené změny (Ctrl+S)' : 'Uložit do souboru (Ctrl+S)';
   const saveBtn = (
@@ -174,8 +219,14 @@ export function TopBar() {
   const themeIcon = theme === 'dark' ? <Sun size={I} /> : <Moon size={I} />;
   const themeLabel = theme === 'dark' ? 'Světlý režim' : 'Tmavý režim';
 
+  const helpEntries: MenuEntry[] = [
+    { key: 'help', label: 'Nápověda', icon: <CircleHelp size={18} />, kbd: '?', onSelect: () => ui().set({ helpOpen: true }) },
+    { key: 'about', label: 'O aplikaci', icon: <Info size={18} />, onSelect: () => ui().set({ aboutOpen: true }) },
+  ];
   const moreEntries: MenuEntry[] = mobile
     ? [
+        { key: 'newProject', label: 'Nový projekt', icon: <FolderPlus size={18} />, onSelect: () => createProject() },
+        ...(narrow ? [{ key: 'childM', label: 'Podúkol', icon: <CornerDownRight size={18} />, disabled: !selectedId, onSelect: () => addChildTo(selectedId) }] : []),
         {
           key: 'multi',
           label: multiMode ? 'Vybrat více ✓' : 'Vybrat více',
@@ -199,7 +250,8 @@ export function TopBar() {
         { key: 'theme', label: themeLabel, icon: themeIcon, onSelect: toggleTheme },
         { key: 'trash', label: trashCount ? `Koš (${trashCount})` : 'Koš', icon: <Trash size={18} />, onSelect: openTrash },
         { key: 'settings', label: 'Nastavení', icon: <Settings size={18} />, onSelect: () => ui().set({ settingsOpen: true }) },
-        { key: 'lock', label: 'Zamknout', icon: <Lock size={18} />, onSelect: () => void lock() },
+        ...helpEntries,
+        { key: 'lock', label: 'Zamknout aplikaci', icon: <KeyRound size={18} />, onSelect: () => void lock() },
       ]
     : [
         ...viewEntries,
@@ -211,7 +263,8 @@ export function TopBar() {
         { key: 'theme', label: themeLabel, icon: themeIcon, onSelect: toggleTheme },
         'sep',
         { key: 'settings', label: 'Nastavení', icon: <Settings size={18} />, onSelect: () => ui().set({ settingsOpen: true }) },
-        { key: 'lock', label: 'Zamknout', icon: <Lock size={18} />, onSelect: () => void lock() },
+        ...helpEntries,
+        { key: 'lock', label: 'Zamknout aplikaci', icon: <KeyRound size={18} />, onSelect: () => void lock() },
       ];
 
   const openMore = (e: ReactMouseEvent<HTMLButtonElement>) => {
@@ -231,10 +284,11 @@ export function TopBar() {
     // Pořadí tlačítek na telefonu – seznam, aby šel snadno upravit (fáze 5: zámek pozic).
     const items: { key: string; el: ReactNode }[] = [
       { key: 'sidebar', el: <Tb icon={<ListTree size={I} />} label="Rejstřík" onClick={toggleSidebar} active={sidebarOpen} /> },
-      { key: 'project', el: <Tb icon={<FolderPlus size={I} />} label="Nový projekt" onClick={() => createProject()} /> },
-      { key: 'child', el: <Tb icon={<CornerDownRight size={I} />} label="Podúkol" onClick={() => addChildTo(selectedId)} disabled={!selectedId} /> },
+      // Pod 360 px se Podúkol schová (je v „⋯“), aby se lišta vešla s tlačítky 44 px.
+      { key: 'child', el: <Tb icon={<CornerDownRight size={I} />} label="Podúkol" onClick={() => addChildTo(selectedId)} disabled={!selectedId} className="tb-wide-only" /> },
       { key: 'undo', el: <Tb icon={<Undo2 size={I} />} label="Zpět" onClick={undo} disabled={!canUndo} /> },
       { key: 'spacer', el: <div className="spacer" /> },
+      { key: 'poslock', el: lockBtn },
       { key: 'search', el: <Tb icon={<SearchIcon size={I} />} label="Hledat" onClick={focusSearch} /> },
       { key: 'bell', el: <BellButton /> },
       { key: 'save', el: saveBtn },
@@ -272,6 +326,7 @@ export function TopBar() {
       <Tb icon={<Milestone size={I} />} label="Milník" title="Nový milník (pod vybraný uzel, jinak uprostřed plochy)" onClick={() => addMilestone(selectedId)} />
       <Tb icon={<Link2 size={I} />} label="Propojit" title="Propojit vybraný uzel s jiným (nebo táhněte z konektoru na okraji uzlu)" onClick={() => startLinkPick(selectedId)} disabled={!selectedId} active={picking} />
       <Tb icon={<Trash2 size={I} />} label="Smazat" title="Smazat (Delete)" onClick={() => void deleteWithConfirm(selectedId)} disabled={!selectedId} />
+      {lockBtn}
       <div className="sep" />
       <Tb icon={<Undo2 size={I} />} label="Zpět" title="Zpět (Ctrl+Z)" onClick={undo} disabled={!canUndo} />
       <Tb icon={<Redo2 size={I} />} label="Znovu" title="Znovu (Ctrl+Y)" onClick={redo} disabled={!canRedo} />

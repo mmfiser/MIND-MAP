@@ -8,6 +8,7 @@ import { STATUS_LABELS, PRIORITY_LABELS } from '../model/labels';
 import type { Priority, Status } from '../model/types';
 import { confirmDialog, toast, useUiStore } from '../store/uiStore';
 import { GRID, canvasApi, data, deleteWithConfirm, run } from './actions';
+import { notifyLocked } from './lockActions';
 
 /** Živé vybrané uzly (bez smazaných). */
 export function selectedIds(): string[] {
@@ -32,6 +33,16 @@ export function clearSelection(): void {
 export function moveSelection(dx: number, dy: number): void {
   const ids = selectedIds();
   if (!ids.length) return;
+  // Šipky respektují zámky: globální zámek nic nepustí, zamčené uzly se přeskočí.
+  if (useUiStore.getState().globalLock) {
+    notifyLocked('global');
+    return;
+  }
+  const d = data();
+  if (d && ids.every((id) => d.nodes[id]!.positionLocked)) {
+    notifyLocked('node');
+    return;
+  }
   run((x) => B.moveNodes(x, ids, dx, dy, GRID), { coalesceKey: `arrows:${ids.join(',')}` });
 }
 
