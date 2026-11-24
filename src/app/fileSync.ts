@@ -25,15 +25,30 @@ import type { MapDocument } from '../model/types';
 import {
   UserCancelled,
   baseName,
+  blockFileSystemAccess,
   ensureWritePermission,
   hasFileSystemAccess,
-  openFile,
+  isFileSystemAccessBlocked,
+  isPolicyBlock,
+  openFileFsa,
+  openFileInput,
   pickSaveHandle,
   readHandle,
   shareOrDownload,
   download,
   writeHandle,
+  type OpenedFile,
 } from '../storage/fileIO';
+import { StepTimeoutError, debugLog, withTimeout } from '../lib/async';
+import {
+  FILE_OP_TIMEOUT_MS,
+  PICKER_STUCK_GRACE_MS,
+  PickerStuckError,
+  STORE_TIMEOUT_MS,
+  WRITE_TIMEOUT_MS,
+  nativeDialog,
+  runFileOp,
+} from './fileOps';
 import { flushAutosave } from '../storage/persist';
 import { useDocStore } from '../store/docStore';
 import { askPassword, choose, toast, useUiStore } from '../store/uiStore';
@@ -98,12 +113,16 @@ async function decryptFileEnvelope(env: Envelope): Promise<unknown | null> {
 async function adoptFile(name: string, handle: FileSystemFileHandle | null, env: Envelope): Promise<void> {
   const fileName = baseName(name);
   useUiStore.getState().set({ fileName });
-  await updateSettings({
-    fileName,
-    fileHandle: handle,
-    fileSalt: env.salt,
-    fileIterations: env.kdf.iterations,
-  });
+  try {
+    await withTimeout(
+      updateSettings({ fileName, fileHandle: handle, fileSalt: env.salt, fileIterations: env.kdf.iterations }),
+      STORE_TIMEOUT_MS,
+      'uložení nastavení',
+    );
+  } catch (e) {
+    // Bez zapamatovaného odkazu na soubor – při ukládání se soubor vybere znovu.
+    debugLog('otevřít: nastavení se nepodařilo uložit', e instanceof Error ? e.name : typeof e);
+  }
 }
 
 function loadFromFile(fileDoc: MapDocument): void {
@@ -118,16 +137,83 @@ function loadFromFile(fileDoc: MapDocument): void {
   notifyDateConflicts(fileDoc);
 }
 
-/** „Otevřít soubor“ – volat přímo z kliknutí (kvůli výběru souboru). */
-export async function openFromFile(): Promise<void> {
-  let opened;
+const POLICY_SAVE_MSG = 'Prohlížeč na tomto počítači nepovoluje přímé ukládání do souborů – soubor se stáhne do Stažených souborů.';
+const POLICY_OPEN_MSG =
+  'Prohlížeč na tomto počítači nepovoluje přímý výběr souboru (zásady nebo bezpečnostní software). Soubor vyberte obyčejným výběrem souboru.';
+
+/** Má aplikace kvůli této chybě přejít na stahování / <input> pro zbytek sezení? */
+function isFsaBroken(e: unknown): boolean {
+  return isPolicyBlock(e) || e instanceof PickerStuckError || e instanceof StepTimeoutError;
+}
+
+function disableFsa(reason: unknown): void {
+  if (!isFileSystemAccessBlocked()) {
+    debugLog('File System Access vypnuto pro toto sezení:', reason instanceof Error ? reason.name : typeof reason);
+    blockFileSystemAccess();
+  }
+}
+
+const isTouch = () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+
+/** Výběr souboru k otevření s hlídáním zaseknutí a náhradní cestou přes <input>. */
+async function pickFileToOpen(): Promise<OpenedFile | null> {
+  if (hasFileSystemAccess()) {
+    try {
+      return await nativeDialog(() => openFileFsa(), 'otevřít: výběr souboru');
+    } catch (e) {
+      if (e instanceof UserCancelled) return null;
+      if (!isFsaBroken(e)) throw e;
+      disableFsa(e);
+      // Nová uživatelská akce (klik v dialogu) – <input type=file> potřebuje kliknutí.
+      const r = await choose({
+        title: 'Výběr souboru',
+        message: POLICY_OPEN_MSG,
+        options: [
+          { value: 'cancel', label: 'Zrušit' },
+          { value: 'pick', label: 'Vybrat soubor', variant: 'primary' },
+        ],
+      });
+      if (r !== 'pick') return null;
+    }
+  }
   try {
-    opened = await openFile();
+    // <input type=file>: starší prohlížeče při zrušení nevyšlou „cancel“ – návrat fokusu bez výběru = zrušení.
+    return await nativeDialog(() => openFileInput(), 'otevřít: výběr souboru (input)', {
+      openWithinMs: null,
+      graceMs: isTouch() ? 20_000 : PICKER_STUCK_GRACE_MS,
+      onStuck: 'cancel',
+      cancelError: () => new UserCancelled(),
+    });
   } catch (e) {
-    if (e instanceof UserCancelled) return;
+    if (e instanceof UserCancelled) return null;
+    throw e;
+  }
+}
+
+/** „Otevřít soubor“ – volat přímo z kliknutí (kvůli výběru souboru). */
+export function openFromFile(): Promise<void> {
+  debugLog('otevřít: klik');
+  return runFileOp('open', openFromFileInner, () => {
+    void showError(
+      'Otevření se nedokončilo',
+      'Otevírání souboru trvalo déle než minutu, nejspíš ho blokuje prohlížeč nebo bezpečnostní software. Zkuste to znovu.',
+    );
+  });
+}
+
+async function openFromFileInner(): Promise<void> {
+  let opened: OpenedFile | null;
+  try {
+    opened = await pickFileToOpen();
+  } catch (e) {
     console.error(e);
     return showError('Soubor nelze otevřít', 'Soubor se nepodařilo načíst.');
   }
+  if (!opened) {
+    debugLog('otevřít: zrušeno');
+    return;
+  }
+  debugLog('otevřít: soubor vybrán');
 
   let env: Envelope;
   try {
@@ -243,7 +329,7 @@ async function checkRemoteBeforeOverwrite(handle: FileSystemFileHandle): Promise
   if (!doc) return false;
   let remote: MapDocument;
   try {
-    const text = await readHandle(handle);
+    const text = await withTimeout(readHandle(handle), WRITE_TIMEOUT_MS, 'čtení souboru před přepsáním');
     if (!text.trim()) return true;
     const env = parseEnvelope(text, FILE_FORMAT);
     remote = migrateDocument(await decryptJson(await keyForSalt(env.salt, env.kdf.iterations), env));
@@ -269,83 +355,173 @@ async function checkRemoteBeforeOverwrite(handle: FileSystemFileHandle): Promise
   return r === 'overwrite';
 }
 
-let saving = false;
+/** Zašifruje aktuální dokument pro soubor (stejná sůl jako minule, nový IV). */
+async function encryptCurrent() {
+  const settings = getSettings();
+  let salt = settings.fileSalt;
+  let iterations = settings.fileIterations ?? KDF_ITERATIONS;
+  if (!salt || iterations < KDF_ITERATIONS) {
+    salt = toBase64(randomBytes(16));
+    iterations = KDF_ITERATIONS;
+  }
+  const key = await keyForSalt(salt, iterations);
+  const { doc, baseRevision, deviceName } = useDocStore.getState();
+  if (!doc) return null;
+  const revision = nextRevision(doc.meta.revision, baseRevision);
+  const toSave: MapDocument = {
+    meta: { ...doc.meta, revision, deviceName: deviceName || doc.meta.deviceName },
+    nodes: doc.nodes,
+    edges: doc.edges,
+  };
+  const env = await encryptJson(key, { format: FILE_FORMAT, salt: fromBase64(salt), iterations }, toSave);
+  return { text: serializeEnvelope(env), revision, toSave, salt, iterations };
+}
+
+/** Uložení nastavení po zápisu – nesmí zaseknout ukládání (IndexedDB, FileSystemFileHandle). */
+async function rememberSaved(fileName: string, handle: FileSystemFileHandle | null, salt: string, iterations: number): Promise<void> {
+  try {
+    await withTimeout(updateSettings({ fileName, fileHandle: handle, fileSalt: salt, fileIterations: iterations }), STORE_TIMEOUT_MS, 'uložení nastavení');
+  } catch (e) {
+    debugLog('uložit: nastavení se nepodařilo uložit', e instanceof Error ? e.name : typeof e);
+    // Bez odkazu na soubor (nejde-li uložit do IndexedDB) – příště se soubor vybere znovu.
+    try {
+      await withTimeout(updateSettings({ fileName, fileHandle: null, fileSalt: salt, fileIterations: iterations }), STORE_TIMEOUT_MS, 'uložení nastavení');
+    } catch {
+      /* nevadí – soubor je uložený */
+    }
+  }
+  try {
+    await withTimeout(flushAutosave(), STORE_TIMEOUT_MS, 'zápis pracovní kopie');
+  } catch (e) {
+    debugLog('uložit: pracovní kopie se nezapsala včas', e instanceof Error ? e.name : typeof e);
+  }
+}
+
+/** Náhradní cesta: stáhnout zašifrovaný soubor (Stažené soubory). */
+async function downloadCurrent(reason?: string): Promise<boolean> {
+  const enc = await encryptCurrent();
+  if (!enc) return false;
+  const fileName = getSettings().fileName || 'mapa';
+  download(enc.text, `${fileName}.mapa.txt`);
+  debugLog('uložit: staženo');
+  useDocStore.getState().markSaved(enc.revision, { nodes: enc.toSave.nodes, edges: enc.toSave.edges });
+  await rememberSaved(fileName, null, enc.salt, enc.iterations);
+  toast(reason ?? `Soubor „${fileName}.mapa.txt“ je ve Stažených souborech – přesuňte ho na OneDrive.`, 'info');
+  return true;
+}
+
+/** Ukládání trvalo přes minutu: zámek je uvolněný, nabídni stažení. */
+async function offerDownloadAfterTimeout(): Promise<void> {
+  const r = await choose({
+    title: 'Ukládání se nedokončilo',
+    message:
+      'Ukládání trvá déle než minutu – nejspíš ho blokuje prohlížeč nebo bezpečnostní software. Data v prohlížeči jsou v pořádku. ' +
+      'Soubor si můžete stáhnout do Stažených souborů a přesunout ho na OneDrive.',
+    options: [
+      { value: 'cancel', label: 'Zavřít' },
+      { value: 'download', label: 'Stáhnout soubor', variant: 'primary' },
+    ],
+  });
+  if (r === 'download') {
+    disableFsa(new StepTimeoutError('ukládání', FILE_OP_TIMEOUT_MS));
+    await downloadCurrent();
+  }
+}
 
 /** „Uložit“ / „Uložit jako“. Volat přímo z kliknutí. */
-export async function saveToFile(saveAs = false): Promise<void> {
-  if (saving) return;
-  const initial = useDocStore.getState().doc;
-  if (!initial) return;
-  saving = true;
+export function saveToFile(saveAs = false): Promise<void> {
+  debugLog('uložit: klik', saveAs ? '(uložit jako)' : '');
+  return runFileOp('save', () => saveToFileInner(saveAs), () => void offerDownloadAfterTimeout());
+}
+
+async function saveToFileInner(saveAs: boolean): Promise<void> {
+  if (!useDocStore.getState().doc) return;
   const ui = useUiStore.getState();
   const settings = getSettings();
   try {
-    const fsa = hasFileSystemAccess();
+    let fsa = hasFileSystemAccess();
+    debugLog('uložit: přímý zápis do souboru', fsa ? 'ano' : 'ne');
     let handle: FileSystemFileHandle | null = null;
     let fileName = settings.fileName || 'mapa';
 
     if (fsa) {
-      if (saveAs || !settings.fileHandle) {
-        handle = await pickSaveHandle(fileName);
-        fileName = baseName(handle.name);
-      } else {
-        handle = settings.fileHandle;
-        if (!(await ensureWritePermission(handle))) {
-          toast('Bez oprávnění k zápisu do souboru. Zkuste „Uložit jako“.', 'error');
+      try {
+        if (saveAs || !settings.fileHandle) {
+          handle = await nativeDialog(() => pickSaveHandle(fileName), 'uložit: výběr souboru');
+          fileName = baseName(handle.name);
+        } else {
+          handle = settings.fileHandle;
+          // Žádost o oprávnění je malá bublina prohlížeče (bez ztráty fokusu) – hlídá ji jen časový limit.
+          const ok = await withTimeout(
+            nativeDialog(() => ensureWritePermission(handle!), 'uložit: oprávnění k zápisu', { openWithinMs: null }),
+            WRITE_TIMEOUT_MS * 2,
+            'oprávnění k zápisu',
+          );
+          if (!ok) {
+            debugLog('uložit: oprávnění zamítnuto');
+            toast('Bez oprávnění k zápisu do souboru. Zkuste „Uložit jako“.', 'error');
+            return;
+          }
+          if (!(await checkRemoteBeforeOverwrite(handle))) {
+            debugLog('uložit: zrušeno (soubor změněn jinde)');
+            return;
+          }
+        }
+      } catch (e) {
+        if (e instanceof UserCancelled) {
+          debugLog('uložit: zrušeno');
           return;
         }
-        if (!(await checkRemoteBeforeOverwrite(handle))) return;
+        if (!isFsaBroken(e)) throw e;
+        disableFsa(e);
+        toast(POLICY_SAVE_MSG, 'info');
+        fsa = false;
+        handle = null;
       }
     }
 
     ui.set({ busy: 'Šifruji…' });
-    let salt = settings.fileSalt;
-    let iterations = settings.fileIterations ?? KDF_ITERATIONS;
-    if (!salt || iterations < KDF_ITERATIONS) {
-      salt = toBase64(randomBytes(16));
-      iterations = KDF_ITERATIONS;
-    }
-    const key = await keyForSalt(salt, iterations);
-
-    const { doc, baseRevision, deviceName } = useDocStore.getState();
-    if (!doc) return;
-    const revision = nextRevision(doc.meta.revision, baseRevision);
-    const toSave: MapDocument = {
-      meta: { ...doc.meta, revision, deviceName: deviceName || doc.meta.deviceName },
-      nodes: doc.nodes,
-      edges: doc.edges,
-    };
-    const env = await encryptJson(key, { format: FILE_FORMAT, salt: fromBase64(salt), iterations }, toSave);
-    const text = serializeEnvelope(env);
+    debugLog('uložit: šifruji');
+    const enc = await encryptCurrent();
+    if (!enc) return;
 
     if (handle) {
       ui.set({ busy: 'Zapisuji…' });
-      const r = await writeWithFallback(handle, text, fileName);
+      debugLog('uložit: zapisuji');
+      const r = await writeWithFallback(handle, enc.text, fileName);
       if (!r) return;
       handle = r.handle;
       if (handle) fileName = baseName(handle.name);
+    } else if (!isTouch()) {
+      // Notebook bez přímého zápisu: stažení (sdílecí okno systému by tu jen mátlo).
+      ui.set({ busy: null });
+      download(enc.text, `${fileName}.mapa.txt`);
+      debugLog('uložit: staženo');
+      if (!fsa && !isFileSystemAccessBlocked()) {
+        await choose({
+          title: 'Soubor je ve Stažených souborech',
+          message:
+            `Tento prohlížeč neumí ukládat přímo do zvolené složky, proto se soubor „${fileName}.mapa.txt“ stáhl do složky Stažené soubory. ` +
+            'Přesuňte ho do OneDrive. Pro přímé ukládání na OneDrive otevřete aplikaci v Google Chrome nebo Microsoft Edge.',
+          options: [{ value: 'ok', label: 'Rozumím', variant: 'primary' }],
+        });
+      }
     } else {
       ui.set({ busy: null });
-      const ok = await shareWithRetry(text, fileName);
+      const ok = await shareWithRetry(enc.text, fileName);
       if (!ok) return;
     }
 
-    useDocStore.getState().markSaved(revision, { nodes: toSave.nodes, edges: toSave.edges });
-    await updateSettings({ fileName, fileHandle: handle, fileSalt: salt, fileIterations: iterations });
-    ui.set({ fileName });
-    await flushAutosave();
+    useDocStore.getState().markSaved(enc.revision, { nodes: enc.toSave.nodes, edges: enc.toSave.edges });
+    ui.set({ fileName, busy: 'Dokončuji…' });
+    await rememberSaved(fileName, handle, enc.salt, enc.iterations);
+    debugLog('uložit: hotovo');
     toast(handle ? `Uloženo do „${handle.name}“.` : 'Soubor předán k uložení.', 'success');
   } catch (e) {
     if (e instanceof UserCancelled) return;
     console.error(e);
     ui.set({ busy: null });
-    await showError(
-      'Uložení se nepodařilo',
-      `Data v prohlížeči zůstávají v pořádku. Podrobnosti: ${describeError(e)}`,
-    );
-  } finally {
-    saving = false;
-    ui.set({ busy: null });
+    await showError('Uložení se nepodařilo', `Data v prohlížeči zůstávají v pořádku. Podrobnosti: ${describeError(e)}`);
   }
 }
 
@@ -356,8 +532,8 @@ function describeError(e: unknown): string {
 
 /**
  * Notebook: zápis do souboru. Když zápis zablokuje antivirus (např. ochrana
- * složek proti ransomwaru) nebo systém, nabídne uložení jinam nebo stažení.
- * Vrací použitý handle (null = staženo), nebo null při zrušení.
+ * složek proti ransomwaru), zásady prohlížeče nebo se zasekne, nabídne uložení
+ * jinam nebo stažení. Vrací použitý handle (null = staženo), nebo null při zrušení.
  */
 async function writeWithFallback(
   handle: FileSystemFileHandle,
@@ -367,11 +543,18 @@ async function writeWithFallback(
   let current = handle;
   for (;;) {
     try {
-      await writeHandle(current, text);
+      await withTimeout(writeHandle(current, text), WRITE_TIMEOUT_MS, 'zápis do souboru');
       return { handle: current };
     } catch (e) {
       console.error(e);
       useUiStore.getState().set({ busy: null });
+      if (isPolicyBlock(e)) {
+        // Zásady prohlížeče zápis zakazují – další pokusy nemají smysl.
+        disableFsa(e);
+        download(text, `${fileName}.mapa.txt`);
+        toast(POLICY_SAVE_MSG, 'info');
+        return { handle: null };
+      }
       const r = await choose({
         title: 'Zápis do souboru byl zablokován',
         message:
@@ -390,9 +573,15 @@ async function writeWithFallback(
       }
       if (r !== 'other') return null;
       try {
-        current = await pickSaveHandle(fileName);
+        current = await nativeDialog(() => pickSaveHandle(fileName), 'uložit: výběr jiného souboru');
       } catch (err) {
         if (err instanceof UserCancelled) return null;
+        if (isFsaBroken(err)) {
+          disableFsa(err);
+          download(text, `${fileName}.mapa.txt`);
+          toast(POLICY_SAVE_MSG, 'info');
+          return { handle: null };
+        }
         throw err;
       }
       useUiStore.getState().set({ busy: 'Zapisuji…' });

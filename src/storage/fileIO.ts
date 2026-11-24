@@ -15,14 +15,32 @@ interface FsaWindow extends Window {
   showSaveFilePicker?(opts?: unknown): Promise<FileSystemFileHandle>;
 }
 
-const w = window as FsaWindow;
+const w = (typeof window === 'undefined' ? {} : window) as FsaWindow;
 
 function isTouchPhone(): boolean {
   return window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(max-width: 900px)').matches;
 }
 
+/**
+ * File System Access zakázané pro zbytek sezení (zásady prohlížeče, bezpečnostní
+ * software, zaseknutý výběr souboru). Pak se ukládá stažením a otevírá přes <input>.
+ */
+let fsaBlocked = false;
+export function blockFileSystemAccess(): void {
+  fsaBlocked = true;
+}
+export function isFileSystemAccessBlocked(): boolean {
+  return fsaBlocked;
+}
+
+/** Chyba, kterou hlásí prohlížeč, když přímý přístup k souborům zakazují zásady nebo bezpečnostní software. */
+export function isPolicyBlock(e: unknown): boolean {
+  return e instanceof DOMException && (e.name === 'SecurityError' || e.name === 'NotAllowedError');
+}
+
 /** File System Access API je k dispozici (a nejsme na telefonu). */
 export function hasFileSystemAccess(): boolean {
+  if (fsaBlocked) return false;
   return typeof w.showSaveFilePicker === 'function' && typeof w.showOpenFilePicker === 'function' && !isTouchPhone();
 }
 
@@ -54,6 +72,25 @@ const FSA_TYPES = [
 ];
 
 /** Otevře soubor. Musí se volat přímo z uživatelské akce (klik). */
+/** Výběr souboru přes File System Access (notebook). */
+export async function openFileFsa(): Promise<OpenedFile> {
+  try {
+    const [handle] = await w.showOpenFilePicker!({ types: FSA_TYPES, excludeAcceptAllOption: false, multiple: false });
+    if (!handle) throw new UserCancelled();
+    const file = await handle.getFile();
+    return { text: await file.text(), name: file.name, handle };
+  } catch (e) {
+    if (isAbort(e)) throw new UserCancelled();
+    throw e;
+  }
+}
+
+/** Výběr souboru přes <input type="file"> (telefon, zakázané File System Access). */
+export async function openFileInput(): Promise<OpenedFile> {
+  const file = await pickWithInput();
+  return { text: await file.text(), name: file.name, handle: null };
+}
+
 export async function openFile(): Promise<OpenedFile> {
   if (hasFileSystemAccess()) {
     try {

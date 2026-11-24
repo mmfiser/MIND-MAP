@@ -193,7 +193,10 @@ export function AboutDialog() {
       </div>
       <div className="field">
         <span>Verze</span>
-        <div>{m ? m[2] : __APP_VERSION__}</div>
+        <div>
+          {__APP_SEMVER__}
+          {m ? ` (commit ${m[2]})` : ''}
+        </div>
       </div>
       <div className="field">
         <span>Sestaveno</span>

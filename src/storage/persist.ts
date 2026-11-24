@@ -7,8 +7,11 @@ import { useDocStore } from '../store/docStore';
 import { toast } from '../store/uiStore';
 import { saveSettings } from './db';
 import { writeVault } from './vault';
+import { debugLog, withTimeout } from '../lib/async';
 
 const DEBOUNCE_MS = 400;
+/** Jeden zaseknutý zápis do IndexedDB nesmí zablokovat všechny další. */
+export const AUTOSAVE_TIMEOUT_MS = 15_000;
 
 let timer: ReturnType<typeof setTimeout> | null = null;
 let chain: Promise<void> = Promise.resolve();
@@ -27,10 +30,17 @@ function flushNow(): Promise<void> {
     const { doc, dirty, baseRevision } = useDocStore.getState();
     if (!doc) return;
     try {
-      await writeVault(doc);
-      await saveSettings({ dirty, baseRevision });
+      await withTimeout(
+        (async () => {
+          await writeVault(doc);
+          await saveSettings({ dirty, baseRevision });
+        })(),
+        AUTOSAVE_TIMEOUT_MS,
+        'zápis pracovní kopie',
+      );
       errorShown = false;
     } catch (e) {
+      debugLog('autosave: chyba', e instanceof Error ? e.name : typeof e);
       console.error(e);
       if (!errorShown) {
         errorShown = true;
