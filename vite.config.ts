@@ -3,6 +3,10 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+/** Číslo verze aplikace z package.json (např. 1.0.1). */
+const APP_SEMVER: string = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 
 /** Označení buildu: datum a čas sestavení + zkrácený git commit. */
 function buildVersion(): string {
@@ -58,6 +62,7 @@ export default defineConfig({
   base: process.env.VITE_BASE ?? '/',
   define: {
     __APP_VERSION__: JSON.stringify(buildVersion()),
+    __APP_SEMVER__: JSON.stringify(APP_SEMVER),
   },
   plugins: [
     react(),

@@ -287,7 +287,9 @@ function SettingsDialog() {
       </div>
       <div className="field">
         <span>Verze aplikace</span>
-        <div>{__APP_VERSION__}</div>
+        <div>
+          {__APP_SEMVER__} · {__APP_VERSION__}
+        </div>
       </div>
       <div className="field">
         <span>Lokální data</span>

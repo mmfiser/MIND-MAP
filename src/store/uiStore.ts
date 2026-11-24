@@ -90,6 +90,8 @@ interface UiState {
   selection: string[];
   /** Telefon: režim „Vybrat více“ – klepnutí přidá / odebere uzel z výběru. */
   multiMode: boolean;
+  /** Běžící ukládání / otevírání souboru (zámek proti souběhu, viz app/fileOps.ts). */
+  fileOp: { kind: 'save' | 'open'; token: number } | null;
   /** Fáze 5: dialogy Nápověda a O aplikaci. */
   helpOpen: boolean;
   aboutOpen: boolean;
@@ -197,7 +199,7 @@ function initialTheme(): Theme {
   } catch {
     /* localStorage nedostupný */
   }
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -206,6 +208,7 @@ export const useUiStore = create<UiState>()((set) => ({
   selectedId: null,
   selection: [],
   multiMode: false,
+  fileOp: null,
   helpOpen: false,
   aboutOpen: false,
   welcomeOpen: false,
@@ -297,6 +300,8 @@ export const useUiStore = create<UiState>()((set) => ({
 /** Dialog s výběrem z možností – vrací hodnotu zvolené možnosti, nebo null (zrušeno). */
 export function choose<T extends string>(d: Omit<ChoiceDialog, 'resolve' | 'options'> & { options: ChoiceOption<T>[] }): Promise<T | null> {
   return new Promise((resolve) => {
+    // Otevřený dialog se nesmí jen tak přepsat – jeho volající by čekal navždy.
+    useUiStore.getState().choice?.resolve(null);
     useUiStore.getState().set({
       choice: { ...d, resolve: (v) => resolve(v as T | null) },
     });
@@ -322,6 +327,8 @@ export async function confirmDialog(
 
 export function askPassword(d: Omit<PasswordDialog, 'resolve'>): Promise<string | null> {
   return new Promise((resolve) => {
+    // Otevřený dialog se nesmí jen tak přepsat – jeho volající by čekal navždy.
+    useUiStore.getState().password?.resolve(null);
     useUiStore.getState().set({ password: { ...d, resolve } });
   });
 }

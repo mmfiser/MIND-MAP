@@ -3,7 +3,14 @@ name: Nasazení na GitHub Pages
 on:
   push:
     branches: [main]
+  # Ruční spuštění (Actions → Nasazení na GitHub Pages → Run workflow).
+  # S vyplněným „ref“ nasadí libovolnou starší verzi – např. tag v1.0.0.
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Tag nebo commit k nasazení (prázdné = aktuální main), např. v1.0.0'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -19,6 +26,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Nasazovaná verze
+        run: echo "Nasazuji ${{ inputs.ref || github.sha }} ($(git rev-parse --short HEAD))"
 
       - uses: actions/setup-node@v4
         with:

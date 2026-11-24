@@ -247,6 +247,34 @@ Pokud už na originu běží jiné stránky, berte to jako bezpečnostní riziko
 3. Číslo verze (čas sestavení + zkrácený hash commitu) je v aplikaci v „⋯“ → O aplikaci.
 4. Otevřené aplikace si novou verzi stáhnou samy: na zamykací obrazovce se hned obnoví, při práci ukážou lištu „Je k dispozici nová verze“. Ručně: O aplikaci → Zkontrolovat aktualizaci.
 5. Mění-li se formát dat, zvyšte `SCHEMA_VERSION` a přidejte migraci (`src/model/migrations.ts`) s testem; starší verze aplikace pak novější soubor odmítne s návodem k aktualizaci.
+6. Zvyšte verzi v `package.json`, doplňte `CHANGELOG.md` a po nasazení označte commit tagem: `git tag -a v1.0.2 -m "…"` a `git push origin v1.0.2`.
+
+### Diagnostika ukládání a otevírání
+
+Aplikace zapisuje do konzole prohlížeče nenápadné záznamy s předponou `[mapa]` – jen názvy kroků (klik, výběr souboru, oprávnění, šifrování, zápis, hotovo / zrušeno / chyba), nikdy obsah mapy ani heslo. Když ukládání na některém počítači nefunguje: F12 → **Console** → v nabídce úrovní zapněte **Verbose**, zopakujte akci a pošlete řádky začínající `[mapa]`. Poslední řádek ukáže, kde se operace zastavila.
+
+Pojistky (v1.0.1): zámek ukládání / otevírání je v `uiStore.fileOp` (`src/app/fileOps.ts`); klik během běžící operace ukáže oznámení; po 60 s (mimo dobu dialogů) se zámek uvolní a aplikace nabídne stažení; zaseknutý nebo zásadami zakázaný přímý přístup k souborům se pro sezení vypne a ukládá se stažením.
+
+### Návrat k předchozí verzi
+
+Každá vydaná verze má tag (`v1.0.0`, `v1.0.1`…, přehled v `CHANGELOG.md`).
+
+**A) Rychle nasadit starší verzi (doporučeno)** – nic se nemaže, větev `main` zůstává:
+1. Na GitHubu otevřete repozitář → záložka **Actions** → vlevo **Nasazení na GitHub Pages**.
+2. Vpravo **Run workflow** → větev nechte `main` → do pole **Tag nebo commit k nasazení** napište např. `v1.0.0` → **Run workflow**.
+3. Počkejte na zelenou fajfku (cca 1–2 minuty).
+4. Uživatelům se starší verze načte **při dalším otevření aplikace** (případně po obnovení stránky; otevřená aplikace ukáže lištu „Je k dispozici nová verze“ a zamknutá se obnoví sama). Kontrola: „⋯“ → O aplikaci → číslo verze.
+
+Pozor: další push do `main` nasadí zase nejnovější verzi. Pokud má starší verze zůstat, použijte i postup B.
+
+**B) Vrátit změny v kódu (trvale)**:
+```bash
+git revert --no-edit <commit-opravy>   # nebo rozsah: git revert --no-edit v1.0.0..main
+git push
+```
+Push do `main` automaticky nasadí vrácený stav.
+
+**Bezpečnost dat při návratu:** verze se stejnou `SCHEMA_VERSION` čtou navzájem stejné soubory (v1.0.0 i v1.0.1 mají schéma 4). Kdyby novější verze zvýšila schéma, starší verze její soubory neotevře a ukáže „Soubor je z novější verze aplikace“ – data v souboru se tím nepoškodí.
 
 ## Formát souboru `.mapa`
 
